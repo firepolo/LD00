@@ -12,6 +12,8 @@
 #define BUFFER_WIDTH 320
 #define BUFFER_HEIGHT 240
 
+#define SELECTED_SHAPE 4
+
 struct Util
 {
 	static inline GLuint randUint(GLuint min, GLuint max)
@@ -229,19 +231,21 @@ public:
 			
 			glm::mat4 uProjection = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
 			glm::mat4 uView = glm::translate(glm::mat4(1), glm::vec3(0, -0.5f, -5));
-			glm::mat4 uModel = glm::rotate(glm::mat4(1), 0.5f, glm::vec3(0.0f, -1, 0));
+			
+			static glm::mat4 uModel = glm::mat4(1);
+			uModel = glm::rotate(uModel, 0.1f, glm::vec3(0.0f, -1, 0));
 			
 			glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&uView);
 			glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&uProjection);
 			glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&uModel);
 			glUniform1i(3, 0);
 
-			shapes[0]->Bind();
+			shapes[SELECTED_SHAPE]->Bind();
 
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			glDrawArrays(GL_TRIANGLES, 0, shapes[0]->count);
+			glDrawArrays(GL_TRIANGLES, 0, shapes[SELECTED_SHAPE]->count);
 
-			shapes[0]->Unbind();
+			shapes[SELECTED_SHAPE]->Unbind();
 			texture->Unbind();
 			shader->Unbind();
 
@@ -279,9 +283,17 @@ public:
 		texture = Texture::Load("resources\\textures\\mega.bmp");
 		if (!texture) return Shutdown(5);
 		
-		shapes = new Model*[1];
-		shapes[0] = Model::Load("resources\\models\\I.mol");
+		shapes = new Model*[5];
+		shapes[0] = Model::Load("resources\\models\\E.mol");
 		if (!shapes[0]) return Shutdown(6);
+		shapes[1] = Model::Load("resources\\models\\H.mol");
+		if (!shapes[1]) return Shutdown(7);
+		shapes[2] = Model::Load("resources\\models\\I.mol");
+		if (!shapes[2]) return Shutdown(8);
+		shapes[3] = Model::Load("resources\\models\\L.mol");
+		if (!shapes[3]) return Shutdown(9);
+		shapes[4] = Model::Load("resources\\models\\U.mol");
+		if (!shapes[4]) return Shutdown(10);
 		
 		glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 		glEnable(GL_DEPTH_TEST);
@@ -301,7 +313,7 @@ private:
 
 	static int Shutdown(int exit)
 	{
-		Array::Delete((void **)shapes, 1);
+		Array::Delete((void **)shapes, 5);
 		Pointer::Delete(texture);
 		Pointer::Delete(shader);
 
