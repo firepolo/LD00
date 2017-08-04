@@ -113,9 +113,9 @@ class Model
 public:
 	struct Vertex
 	{
-		GLbyte x, y, z;
-		GLbyte s, t;
-		GLbyte _unused0, _unused1, _unused2; // For alignment
+		float x, y, z;
+		float s, t;
+		float _unused;
 	};
 
 	GLuint vbo;
@@ -125,15 +125,23 @@ public:
 	static Model *Load(const std::string &filename)
 	{
 		GLuint size = 0;
-		char *vertices = File::ReadAll(filename.c_str(), &size);
-		if (!vertices || size < 24 || (size % sizeof(Vertex))) return NULL;
+		char *data = File::ReadAll(filename.c_str(), &size);
+		if (!data || size < 18 || (size % 18)) return NULL;
 		
-		for (int i = 0; i < size; ++i) vertices[i] -= '0';
+		float *vertices = new float[size];
+		char s = -1;
+		for (GLuint i = 0; i < size; ++i)
+		{
+			s = i % 3 ? s : !s;
+			float f = data[i] - '0';
+			vertices[i] = s ? f * 0.25f : f;
+		}
+		delete[] data;
 		
 		GLuint vbo;
 		glGenBuffers(1, &vbo);
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, size, vertices, GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, size * sizeof(float), vertices, GL_STATIC_DRAW);
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 		
 		delete[] vertices;
@@ -144,12 +152,12 @@ public:
 			glBindBuffer(GL_ARRAY_BUFFER, vbo);
 			glEnableVertexAttribArray(0);
 			glEnableVertexAttribArray(1);
-			glVertexAttribPointer(0, 3, GL_BYTE, GL_FALSE, sizeof(Vertex), 0);
-			glVertexAttribPointer(1, 2, GL_BYTE, GL_FALSE, sizeof(Vertex), (void *)&((Vertex *)0)->s);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)&((Vertex *)0)->s);
 			glBindBuffer(GL_ARRAY_BUFFER, 0);
 		glBindVertexArray(0);
 		
-		return new Model(vbo, vao, size / sizeof(Vertex));
+		return new Model(vbo, vao, size / 6);
 	}
 	
 	~Model()
@@ -221,7 +229,7 @@ public:
 			
 			glm::mat4 uProjection = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
 			glm::mat4 uView = glm::translate(glm::mat4(1), glm::vec3(0, -0.5f, -5));
-			glm::mat4 uModel = glm::rotate(glm::mat4(1), 0.5f, glm::vec3(20.0f, 1, 0));
+			glm::mat4 uModel = glm::rotate(glm::mat4(1), 0.5f, glm::vec3(0.0f, -1, 0));
 			
 			glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&uView);
 			glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&uProjection);
@@ -272,7 +280,7 @@ public:
 		if (!texture) return Shutdown(5);
 		
 		shapes = new Model*[1];
-		shapes[0] = Model::Load("resources\\models\\I.mod");
+		shapes[0] = Model::Load("resources\\models\\I.mol");
 		if (!shapes[0]) return Shutdown(6);
 		
 		glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
