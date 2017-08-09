@@ -332,11 +332,11 @@ public:
 				}
 			}
 			
-			if (keys[SDL_SCANCODE_W])
+			if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])
 			{
 				camera->position += camera->look * CAMERA_SPEED;
 			}
-			else if (keys[SDL_SCANCODE_S])
+			else if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN])
 			{
 				camera->position -= camera->look * CAMERA_SPEED;
 			}
