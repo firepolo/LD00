@@ -1,6 +1,9 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
+#include <algorithm>
+#include <time.h>
 #include <sdl2/sdl.h>
 #include <gl/glew.h>
 #include <glm/glm.hpp>
@@ -12,7 +15,7 @@
 #define BUFFER_WIDTH 320
 #define BUFFER_HEIGHT 240
 
-#define SELECTED_SHAPE 4
+#define MAX_KEYS 128
 
 struct Util
 {
@@ -59,6 +62,24 @@ struct File
 		if (size) *size = s;
 		return p;
 	}
+};
+
+struct Point
+{
+	short x, y;
+	
+	Point &Set(short x, short y) { this->x = x; this->y = y; return *this; }
+	
+	bool operator==(const Point &o) const { return *((int*)this) == *((int*)&o); }
+};
+
+struct Camera
+{
+	glm::vec3 position;
+	glm::vec3 look;
+	float angle;
+	
+	Camera(glm::vec3 _position, float _angle) : position(_position), angle(_angle), look(glm::vec3(glm::cos(angle), 0, glm::sin(angle))) {}
 };
 
 class Shader
@@ -136,7 +157,7 @@ public:
 		{
 			s = i % 3 ? s : !s;
 			float f = data[i] - '0';
-			vertices[i] = s ? f * 0.25f : f;
+			vertices[i] = s ? f * 0.25f : f * 0.5f;
 		}
 		delete[] data;
 		
@@ -212,6 +233,80 @@ private:
 	Texture(GLuint _id) : id(_id) {}
 };
 
+class Block
+{
+public:
+	Model *model;
+	glm::mat4 transform;
+	
+	Block(Model *_model, glm::mat4 _transform) : model(_model), transform(_transform) {}
+};
+
+class Map
+{
+public:
+	std::vector<Block> *blocks;
+	
+	Map(std::vector<Block> *_blocks) : blocks(_blocks) {}
+	~Map() { delete blocks; }
+
+	static Map *Generate(GLuint size, Model **models)
+	{
+		std::vector<Point> points;
+		const Point dirs[] = { { -1, 0 }, { 0, -1 }, { 1, 0 }, { 0, 1 } };
+		
+		Point p = { 0 };
+		
+		srand(time(0));
+		
+		for (int i = 0; i < size; ++i)
+		{
+			Point d = dirs[int(rand() / (float)RAND_MAX * 4)];
+			Point n = { p.x + d.x, p.y + d.y };
+			if (std::find(points.begin(), points.end(), n) == points.end())
+			{
+				points.push_back(n);
+			}
+			*((int *)&p) = *((int *)&n);
+		}
+		
+		std::vector<Block> *blocks = new std::vector<Block>();
+		int i = 0;
+		
+		for (std::vector<Point>::iterator beg = points.begin(), end = points.end(), it = beg; it != end; ++it)
+		{
+			// ltrb
+			char c = std::find(beg, end, p.Set(it->x - 1, it->y)) != end;
+			c |= (std::find(beg, end, p.Set(it->x, it->y - 1)) != end) << 1;
+			c |= (std::find(beg, end, p.Set(it->x + 1, it->y)) != end) << 2;
+			c |= (std::find(beg, end, p.Set(it->x, it->y + 1)) != end) << 3;
+			
+			// E
+			if (c == 0b1111) blocks->push_back(Block(models[0], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
+			// I
+			else if (c == 0b1000) blocks->push_back(Block(models[1], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
+			else if (c == 0b0100) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
+			else if (c == 0b0010) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
+			else if (c == 0b0001) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+			// H
+			else if (c == 0b1010) blocks->push_back(Block(models[2], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
+			else if (c == 0b0101) blocks->push_back(Block(models[2], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+			// L
+			else if (c == 0b1100) blocks->push_back(Block(models[3], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
+			else if (c == 0b0110) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
+			else if (c == 0b0011) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
+			else if (c == 0b1001) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+			// U
+			else if (c == 0b1110) blocks->push_back(Block(models[4], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
+			else if (c == 0b0111) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
+			else if (c == 0b1011) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
+			else if (c == 0b1101) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+		}
+		
+		return new Map(blocks);
+	}
+};
+
 class App
 {
 public:
@@ -224,28 +319,67 @@ public:
 			while (SDL_PollEvent(&event))
 			{
 				if (event.type == SDL_QUIT) return Shutdown(0);
+				
+				if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP)
+				{
+					if (event.key.keysym.scancode < MAX_KEYS) keys[event.key.keysym.scancode] = event.type == SDL_KEYDOWN;
+					continue;
+				}
+			}
+			
+			if (keys[SDL_SCANCODE_W])
+			{
+				camera->position += camera->look * 0.1f;
+			}
+			else if (keys[SDL_SCANCODE_S])
+			{
+				camera->position -= camera->look * 0.1f;
+			}
+			
+			if (keys[SDL_SCANCODE_A])
+			{
+				camera->position.x += camera->look.z * 0.1f;
+				camera->position.z -= camera->look.x * 0.1f;
+			}
+			else if (keys[SDL_SCANCODE_D])
+			{
+				camera->position.x -= camera->look.z * 0.1f;
+				camera->position.z += camera->look.x * 0.1f;
+			}
+			
+			if (keys[SDL_SCANCODE_LEFT])
+			{
+				camera->angle -= 0.2f;
+				camera->look.x = glm::cos(camera->angle);
+				camera->look.z = glm::sin(camera->angle);
+			}
+			else if (keys[SDL_SCANCODE_RIGHT])
+			{
+				camera->angle += 0.2f;
+				camera->look.x = glm::cos(camera->angle);
+				camera->look.z = glm::sin(camera->angle);
 			}
 
 			shader->Bind();
 			texture->Bind();
 			
 			glm::mat4 uProjection = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
-			glm::mat4 uView = glm::translate(glm::mat4(1), glm::vec3(0, -0.5f, -5));
-			
-			static glm::mat4 uModel = glm::mat4(1);
-			uModel = glm::rotate(uModel, 0.1f, glm::vec3(0.0f, -1, 0));
-			
+			//glm::mat4 uView = glm::lookAt(camera->position, camera->position + camera->look, glm::vec3(0, 1, 0));
+			glm::mat4 uView = glm::lookAt(camera->position, glm::vec3(camera->position.x + camera->look.x, 2, camera->position.z + camera->look.z), glm::vec3(0, 1, 0));
 			glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&uView);
 			glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&uProjection);
-			glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&uModel);
 			glUniform1i(3, 0);
-
-			shapes[SELECTED_SHAPE]->Bind();
-
+			
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			glDrawArrays(GL_TRIANGLES, 0, shapes[SELECTED_SHAPE]->count);
-
-			shapes[SELECTED_SHAPE]->Unbind();
+			
+			for (std::vector<Block>::iterator it = map->blocks->begin(), end = map->blocks->end(); it != end; ++it)
+			{
+				it->model->Bind();
+				glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&it->transform);
+				glDrawArrays(GL_TRIANGLES, 0, it->model->count);
+				it->model->Unbind();
+			}
+			
 			texture->Unbind();
 			shader->Unbind();
 
@@ -283,37 +417,47 @@ public:
 		texture = Texture::Load("resources\\textures\\mega.bmp");
 		if (!texture) return Shutdown(5);
 		
-		shapes = new Model*[5];
-		shapes[0] = Model::Load("resources\\models\\E.mol");
-		if (!shapes[0]) return Shutdown(6);
-		shapes[1] = Model::Load("resources\\models\\H.mol");
-		if (!shapes[1]) return Shutdown(7);
-		shapes[2] = Model::Load("resources\\models\\I.mol");
-		if (!shapes[2]) return Shutdown(8);
-		shapes[3] = Model::Load("resources\\models\\L.mol");
-		if (!shapes[3]) return Shutdown(9);
-		shapes[4] = Model::Load("resources\\models\\U.mol");
-		if (!shapes[4]) return Shutdown(10);
+		models = new Model*[5];
+		models[0] = Model::Load("resources\\models\\E.mol");
+		if (!models[0]) return Shutdown(6);
+		models[1] = Model::Load("resources\\models\\I.mol");
+		if (!models[1]) return Shutdown(7);
+		models[2] = Model::Load("resources\\models\\H.mol");
+		if (!models[2]) return Shutdown(8);
+		models[3] = Model::Load("resources\\models\\L.mol");
+		if (!models[3]) return Shutdown(9);
+		models[4] = Model::Load("resources\\models\\U.mol");
+		if (!models[4]) return Shutdown(10);
+		
+		map = Map::Generate(4, models);
+		
+		keys = new bool[MAX_KEYS];
+		memset(keys, 0, MAX_KEYS);
+		
+		camera = new Camera(glm::vec3(0, 5, 1), 0);
 		
 		glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 		glEnable(GL_DEPTH_TEST);
-		glEnable(GL_CULL_FACE);
+		//glEnable(GL_CULL_FACE);
 		glClearColor(0.1, 0.5, 0.8, 1);
-
+		
 		return 0;
 	}
 
 private:
 	static SDL_Window *window;
 	static SDL_GLContext context;
-
+	
 	static Shader *shader;
 	static Texture *texture;
-	static Model **shapes;
+	static Model **models;
+	static Map *map;
+	static bool *keys;
+	static Camera *camera;
 
 	static int Shutdown(int exit)
 	{
-		Array::Delete((void **)shapes, 5);
+		Array::Delete((void **)models, 5);
 		Pointer::Delete(texture);
 		Pointer::Delete(shader);
 
@@ -327,7 +471,10 @@ private:
 
 Shader *App::shader = NULL;
 Texture *App::texture = NULL;
-Model **App::shapes = NULL;
+Model **App::models = NULL;
+Map *App::map = NULL;
+bool *App::keys = NULL;
+Camera *App::camera = NULL;
 
 SDL_Window *App::window = NULL;
 SDL_GLContext App::context = NULL;
