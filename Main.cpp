@@ -248,10 +248,11 @@ public:
 class Map
 {
 public:
-	std::vector<Block> *blocks;
+	Block **blocks;
+	GLuint size;
 	
-	Map(std::vector<Block> *_blocks) : blocks(_blocks) {}
-	~Map() { delete blocks; }
+	Map(Block **_blocks, GLuint _size) : blocks(_blocks), size(_size) {}
+	~Map() { Array::Delete((void **)blocks, size); }
 
 	static Map *Generate(GLuint size, Model **models)
 	{
@@ -271,7 +272,8 @@ public:
 			*((int *)&p) = *((int *)&n);
 		}
 		
-		std::vector<Block> *blocks = new std::vector<Block>();
+		//std::vector<Block> *blocks = new std::vector<Block>();
+		Block **blocks = new Block*[size];
 		int i = 0;
 		
 		for (std::vector<Point>::iterator beg = points.begin(), end = points.end(), it = beg; it != end; ++it)
@@ -283,28 +285,30 @@ public:
 			c |= (std::find(beg, end, p.Set(it->x, it->y + 1)) != end) << 3;
 			
 			// E
-			if (c == 0b1111) blocks->push_back(Block(models[0], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
+			if (c == 0b1111) blocks[i] = new Block(models[0], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
 			// I
-			else if (c == 0b1110) blocks->push_back(Block(models[1], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
-			else if (c == 0b1101) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
-			else if (c == 0b1011) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
-			else if (c == 0b0111) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+			else if (c == 0b1110) blocks[i] = new Block(models[1], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
+			else if (c == 0b1101) blocks[i] = new Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0)));
+			else if (c == 0b1011) blocks[i] = new Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0)));
+			else if (c == 0b0111) blocks[i] = new Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
 			// H
-			else if (c == 0b1010) blocks->push_back(Block(models[2], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
-			else if (c == 0b0101) blocks->push_back(Block(models[2], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+			else if (c == 0b1010) blocks[i] = new Block(models[2], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
+			else if (c == 0b0101) blocks[i] = new Block(models[2], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
 			// L
-			else if (c == 0b1100) blocks->push_back(Block(models[3], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
-			else if (c == 0b1001) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
-			else if (c == 0b0011) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
-			else if (c == 0b0110) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+			else if (c == 0b1100) blocks[i] = new Block(models[3], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
+			else if (c == 0b1001) blocks[i] = new Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0)));
+			else if (c == 0b0011) blocks[i] = new Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0)));
+			else if (c == 0b0110) blocks[i] = new Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
 			// U
-			else if (c == 0b1000) blocks->push_back(Block(models[4], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
-			else if (c == 0b0001) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
-			else if (c == 0b0010) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
-			else if (c == 0b0100) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+			else if (c == 0b1000) blocks[i] = new Block(models[4], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
+			else if (c == 0b0001) blocks[i] = new Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0)));
+			else if (c == 0b0010) blocks[i] = new Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0)));
+			else if (c == 0b0100) blocks[i] = new Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
+			
+			++i;
 		}
 		
-		return new Map(blocks);
+		return new Map(blocks, size);
 	}
 };
 
@@ -373,12 +377,13 @@ public:
 			
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			
-			for (std::vector<Block>::iterator it = map->blocks->begin(), end = map->blocks->end(); it != end; ++it)
+			for (int i = 0; i < map->size; ++i)
 			{
-				it->model->Bind();
-				glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&it->transform);
-				glDrawArrays(GL_TRIANGLES, 0, it->model->count);
-				it->model->Unbind();
+				Block *b = map->blocks[i];
+				b->model->Bind();
+				glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&b->transform);
+				glDrawArrays(GL_TRIANGLES, 0, b->model->count);
+				b->model->Unbind();
 			}
 			
 			texture->Unbind();
