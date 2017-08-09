@@ -17,6 +17,9 @@
 
 #define MAX_KEYS 128
 
+#define CAMERA_SPEED 0.1f
+#define CAMERA_ANGLE_SPEED 0.1f
+
 struct Util
 {
 	static inline GLuint randUint(GLuint min, GLuint max)
@@ -256,17 +259,15 @@ public:
 		const Point dirs[] = { { -1, 0 }, { 0, -1 }, { 1, 0 }, { 0, 1 } };
 		
 		Point p = { 0 };
+		points.push_back({0});
 		
 		srand(time(0));
 		
-		for (int i = 0; i < size; ++i)
+		while (points.size() < size)
 		{
 			Point d = dirs[int(rand() / (float)RAND_MAX * 4)];
 			Point n = { p.x + d.x, p.y + d.y };
-			if (std::find(points.begin(), points.end(), n) == points.end())
-			{
-				points.push_back(n);
-			}
+			if (std::find(points.begin(), points.end(), n) == points.end()) points.push_back(n);
 			*((int *)&p) = *((int *)&n);
 		}
 		
@@ -284,23 +285,23 @@ public:
 			// E
 			if (c == 0b1111) blocks->push_back(Block(models[0], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
 			// I
-			else if (c == 0b1000) blocks->push_back(Block(models[1], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
-			else if (c == 0b0100) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
-			else if (c == 0b0010) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
-			else if (c == 0b0001) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+			else if (c == 0b1110) blocks->push_back(Block(models[1], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
+			else if (c == 0b1101) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
+			else if (c == 0b1011) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
+			else if (c == 0b0111) blocks->push_back(Block(models[1], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
 			// H
 			else if (c == 0b1010) blocks->push_back(Block(models[2], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
 			else if (c == 0b0101) blocks->push_back(Block(models[2], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
 			// L
 			else if (c == 0b1100) blocks->push_back(Block(models[3], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
-			else if (c == 0b0110) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
+			else if (c == 0b1001) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
 			else if (c == 0b0011) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
-			else if (c == 0b1001) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+			else if (c == 0b0110) blocks->push_back(Block(models[3], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
 			// U
-			else if (c == 0b1110) blocks->push_back(Block(models[4], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
-			else if (c == 0b0111) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
-			else if (c == 0b1011) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
-			else if (c == 0b1101) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
+			else if (c == 0b1000) blocks->push_back(Block(models[4], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y))));
+			else if (c == 0b0001) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0))));
+			else if (c == 0b0010) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0))));
+			else if (c == 0b0100) blocks->push_back(Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0))));
 		}
 		
 		return new Map(blocks);
@@ -329,33 +330,33 @@ public:
 			
 			if (keys[SDL_SCANCODE_W])
 			{
-				camera->position += camera->look * 0.1f;
+				camera->position += camera->look * CAMERA_SPEED;
 			}
 			else if (keys[SDL_SCANCODE_S])
 			{
-				camera->position -= camera->look * 0.1f;
+				camera->position -= camera->look * CAMERA_SPEED;
 			}
 			
 			if (keys[SDL_SCANCODE_A])
 			{
-				camera->position.x += camera->look.z * 0.1f;
-				camera->position.z -= camera->look.x * 0.1f;
+				camera->position.x += camera->look.z * CAMERA_SPEED;
+				camera->position.z -= camera->look.x * CAMERA_SPEED;
 			}
 			else if (keys[SDL_SCANCODE_D])
 			{
-				camera->position.x -= camera->look.z * 0.1f;
-				camera->position.z += camera->look.x * 0.1f;
+				camera->position.x -= camera->look.z * CAMERA_SPEED;
+				camera->position.z += camera->look.x * CAMERA_SPEED;
 			}
 			
 			if (keys[SDL_SCANCODE_LEFT])
 			{
-				camera->angle -= 0.2f;
+				camera->angle -= CAMERA_ANGLE_SPEED;
 				camera->look.x = glm::cos(camera->angle);
 				camera->look.z = glm::sin(camera->angle);
 			}
 			else if (keys[SDL_SCANCODE_RIGHT])
 			{
-				camera->angle += 0.2f;
+				camera->angle += CAMERA_ANGLE_SPEED;
 				camera->look.x = glm::cos(camera->angle);
 				camera->look.z = glm::sin(camera->angle);
 			}
@@ -364,8 +365,8 @@ public:
 			texture->Bind();
 			
 			glm::mat4 uProjection = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
-			//glm::mat4 uView = glm::lookAt(camera->position, camera->position + camera->look, glm::vec3(0, 1, 0));
-			glm::mat4 uView = glm::lookAt(camera->position, glm::vec3(camera->position.x + camera->look.x, 2, camera->position.z + camera->look.z), glm::vec3(0, 1, 0));
+			glm::mat4 uView = glm::lookAt(camera->position, camera->position + camera->look, glm::vec3(0, 1, 0));
+			//glm::mat4 uView = glm::lookAt(camera->position, glm::vec3(camera->position.x + camera->look.x, 2, camera->position.z + camera->look.z), glm::vec3(0, 1, 0));
 			glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&uView);
 			glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&uProjection);
 			glUniform1i(3, 0);
@@ -429,16 +430,16 @@ public:
 		models[4] = Model::Load("resources\\models\\U.mol");
 		if (!models[4]) return Shutdown(10);
 		
-		map = Map::Generate(4, models);
+		map = Map::Generate(64, models);
 		
 		keys = new bool[MAX_KEYS];
 		memset(keys, 0, MAX_KEYS);
 		
-		camera = new Camera(glm::vec3(0, 5, 1), 0);
+		camera = new Camera(glm::vec3(0, 0, 0), 0);
 		
 		glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 		glEnable(GL_DEPTH_TEST);
-		//glEnable(GL_CULL_FACE);
+		glEnable(GL_CULL_FACE);
 		glClearColor(0.1, 0.5, 0.8, 1);
 		
 		return 0;
