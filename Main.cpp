@@ -8,6 +8,7 @@
 #include <gl/glew.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_access.hpp>
 
 #define WINDOW_WIDTH 320
 #define WINDOW_HEIGHT 240
@@ -19,14 +20,11 @@
 
 #define CAMERA_SPEED 0.1f
 #define CAMERA_ANGLE_SPEED 0.1f
+#define CAMERA_VISIBLE_DISTANCE 3
 
-struct Util
-{
-	static inline GLuint randUint(GLuint min, GLuint max)
-	{
-		return min + GLuint(rand() / (float)RAND_MAX * (max - min));
-	}
-};
+#define HITBOX_SIZE 0.1f
+
+#define TOP_VIEW_MODE 1
 
 struct Pointer
 {
@@ -70,9 +68,7 @@ struct File
 struct Point
 {
 	short x, y;
-	
 	Point &Set(short x, short y) { this->x = x; this->y = y; return *this; }
-	
 	bool operator==(const Point &o) const { return *((int*)this) == *((int*)&o); }
 };
 
@@ -249,11 +245,35 @@ class Map
 {
 public:
 	Block **blocks;
-	GLuint size;
+	Point size;
+	Point origin;
 	
-	Map(Block **_blocks, GLuint _size) : blocks(_blocks), size(_size) {}
-	~Map() { Array::Delete((void **)blocks, size); }
-
+	Map(Block **blocks, const Point &size, const Point &origin)
+	{
+		this->blocks = blocks;
+		this->size = size;
+		this->origin = origin;
+	}
+	
+	~Map()
+	{
+		Array::Delete((void **)blocks, size.x * size.y);
+	}
+	
+	void Move(glm::vec3 &position, const glm::vec3 &direction)
+	{
+		float x = position.x + direction.x;
+		float z = position.z + direction.z;
+		float hx = x - origin.x + 0.5f + (direction.x < 0 ? -HITBOX_SIZE : HITBOX_SIZE);
+		float hz = z - origin.y + 0.5f + (direction.z < 0 ? -HITBOX_SIZE : HITBOX_SIZE);
+		
+		if (hx < 0 || hx >= size.x || hz < 0 || hz >= size.y) return;
+		if (blocks[(int)hz * size.x + (int)hx] == NULL) return;
+		
+		position.x = x;
+		position.z = z;
+	}
+	
 	static Map *Generate(GLuint size, Model **models)
 	{
 		std::vector<Point> points;
@@ -262,27 +282,40 @@ public:
 		Point p = { 0 };
 		points.push_back({0});
 		
+		short l = INT_MAX, r = INT_MIN, t = INT_MAX, b = INT_MIN;
+		
 		srand(time(0));
 		
 		while (points.size() < size)
 		{
 			Point d = dirs[int(rand() / (float)RAND_MAX * 4)];
 			Point n = { p.x + d.x, p.y + d.y };
-			if (std::find(points.begin(), points.end(), n) == points.end()) points.push_back(n);
+			if (std::find(points.begin(), points.end(), n) == points.end())
+			{
+				if (n.x < l) l = n.x;
+				else if (n.x > r) r = n.x;
+				if (n.y < t) t = n.y;
+				else if (n.y > b) b = n.y;
+				points.push_back(n);
+			}
 			*((int *)&p) = *((int *)&n);
 		}
 		
-		//std::vector<Block> *blocks = new std::vector<Block>();
+		short w = glm::abs(l) + glm::abs(r) + 1;
+		short h = glm::abs(t) + glm::abs(b) + 1;
+		size = w * h;
 		Block **blocks = new Block*[size];
-		int i = 0;
+		memset(blocks, 0, size * sizeof(void *));
 		
 		for (std::vector<Point>::iterator beg = points.begin(), end = points.end(), it = beg; it != end; ++it)
 		{
-			// ltrb
-			char c = std::find(beg, end, p.Set(it->x - 1, it->y)) != end;
+			// Find neighbors left, top, right, bottom
+			GLuint c = std::find(beg, end, p.Set(it->x - 1, it->y)) != end;
 			c |= (std::find(beg, end, p.Set(it->x, it->y - 1)) != end) << 1;
 			c |= (std::find(beg, end, p.Set(it->x + 1, it->y)) != end) << 2;
 			c |= (std::find(beg, end, p.Set(it->x, it->y + 1)) != end) << 3;
+			
+			GLuint i = (it->y - t) * w + (it->x - l);
 			
 			// E
 			if (c == 0b1111) blocks[i] = new Block(models[0], glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
@@ -304,11 +337,9 @@ public:
 			else if (c == 0b0001) blocks[i] = new Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0)));
 			else if (c == 0b0010) blocks[i] = new Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0)));
 			else if (c == 0b0100) blocks[i] = new Block(models[4], glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
-			
-			++i;
 		}
 		
-		return new Map(blocks, size);
+		return new Map(blocks, { w, h }, { l, t });
 	}
 };
 
@@ -332,24 +363,23 @@ public:
 				}
 			}
 			
+			// INPUT CHECKING
 			if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])
 			{
-				camera->position += camera->look * CAMERA_SPEED;
+				map->Move(camera->position, camera->look * CAMERA_SPEED);
 			}
 			else if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN])
 			{
-				camera->position -= camera->look * CAMERA_SPEED;
+				map->Move(camera->position, camera->look * -CAMERA_SPEED);
 			}
 			
 			if (keys[SDL_SCANCODE_A])
 			{
-				camera->position.x += camera->look.z * CAMERA_SPEED;
-				camera->position.z -= camera->look.x * CAMERA_SPEED;
+				map->Move(camera->position, glm::vec3(camera->look.z * CAMERA_SPEED, 0, camera->look.x * -CAMERA_SPEED));
 			}
 			else if (keys[SDL_SCANCODE_D])
 			{
-				camera->position.x -= camera->look.z * CAMERA_SPEED;
-				camera->position.z += camera->look.x * CAMERA_SPEED;
+				map->Move(camera->position, glm::vec3(camera->look.z * -CAMERA_SPEED, 0, camera->look.x * CAMERA_SPEED));
 			}
 			
 			if (keys[SDL_SCANCODE_LEFT])
@@ -364,26 +394,41 @@ public:
 				camera->look.x = glm::cos(camera->angle);
 				camera->look.z = glm::sin(camera->angle);
 			}
-
+			
+			// RENDER
 			shader->Bind();
 			texture->Bind();
 			
-			glm::mat4 uProjection = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.1f, 1000.0f);
+			glm::mat4 uProjection = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.01f, 100.0f);
+			
+		#if TOP_VIEW_MODE==1
+			glm::mat4 uView = glm::lookAt(camera->position, glm::vec3(camera->position.x + camera->look.x, 2, camera->position.z + camera->look.z), glm::vec3(0, 1, 0));
+		#else
 			glm::mat4 uView = glm::lookAt(camera->position, camera->position + camera->look, glm::vec3(0, 1, 0));
-			//glm::mat4 uView = glm::lookAt(camera->position, glm::vec3(camera->position.x + camera->look.x, 2, camera->position.z + camera->look.z), glm::vec3(0, 1, 0));
+		#endif
+			
 			glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&uView);
 			glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&uProjection);
 			glUniform1i(3, 0);
 			
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			
-			for (int i = 0; i < map->size; ++i)
+			for (int z = camera->position.z - map->origin.y + 0.5f - CAMERA_VISIBLE_DISTANCE, ez = z + (CAMERA_VISIBLE_DISTANCE << 1); z <= ez; ++z)
 			{
-				Block *b = map->blocks[i];
-				b->model->Bind();
-				glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&b->transform);
-				glDrawArrays(GL_TRIANGLES, 0, b->model->count);
-				b->model->Unbind();
+				if (z < 0 || z >= map->size.y) continue;
+				
+				for (int x = camera->position.x - map->origin.x + 0.5f - CAMERA_VISIBLE_DISTANCE, ex = x + (CAMERA_VISIBLE_DISTANCE << 1); x <= ex; ++x)
+				{
+					if (x < 0 || x >= map->size.x) continue;
+					
+					Block *b = map->blocks[z * map->size.x + x];
+					if (b == NULL) continue;
+					
+					b->model->Bind();
+					glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&b->transform);
+					glDrawArrays(GL_TRIANGLES, 0, b->model->count);
+					b->model->Unbind();
+				}
 			}
 			
 			texture->Unbind();
@@ -440,7 +485,12 @@ public:
 		keys = new bool[MAX_KEYS];
 		memset(keys, 0, MAX_KEYS);
 		
-		camera = new Camera(glm::vec3(0, 0, 0), 0);
+		#if TOP_VIEW_MODE==1
+			camera = new Camera(glm::vec3(0, 5, 0), 0);
+		#else
+			camera = new Camera(glm::vec3(0, 0, 0), 0);
+		#endif
+		
 		
 		glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 		glEnable(GL_DEPTH_TEST);
