@@ -9,6 +9,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/matrix_access.hpp>
+#include <al/al.h>
+#include <al/alc.h>
 
 #define WINDOW_WIDTH 320
 #define WINDOW_HEIGHT 240
@@ -142,9 +144,7 @@ public:
 		float _unused;
 	};
 
-	GLuint vbo;
-	GLuint vao;
-	GLuint count;
+	GLuint vbo, vao, count;
 	
 	static Model *Load(const std::string &filename)
 	{
@@ -232,6 +232,43 @@ public:
 	
 private:
 	Texture(GLuint _id) : id(_id) {}
+};
+
+class Sound
+{
+public:
+	GLuint buf, src;
+	
+	static Sound *Load(const std::string &filename)
+	{
+		char *data = File::ReadAll(filename.c_str());
+		if (*(short *)(data + 20) != 1 ||	// Audio format PCM
+			*(short *)(data + 22) != 1 ||	// Number channels 1
+			*(GLuint *)(data + 24) != 44100 ||	// Sample rate 44100
+			*(short *)(data + 34) != 16)	// Bits per sample 16
+			return NULL;
+		
+		GLuint buf;
+		alGenBuffers(1, &buf);
+		alBufferData(buf, AL_FORMAT_MONO16, data + 44, *(GLuint *)(data + 40), 44100);
+		delete[] data;
+		
+		GLuint src;
+		alGenSources(1, &src);
+		alSourcei(src, AL_BUFFER, buf);
+		
+		return new Sound(buf, src);
+	}
+	
+	~Sound() { alDeleteSources(1, &src); alDeleteBuffers(1, &buf); }
+	inline int GetState() { int s; alGetSourcei(src, AL_SOURCE_STATE, &s); return s; }
+	inline void SetLooping(bool looping) { alSourcei(src, AL_LOOPING, looping); }
+	inline void Play() { if (GetState() != AL_PLAYING) alSourcePlay(src); }
+	inline void Pause() { if (GetState() == AL_PLAYING) alSourcePause(src); }
+	inline void Stop() { if (GetState() != AL_STOPPED) alSourceStop(src); }
+
+private:
+	Sound(GLuint _buf, GLuint _src) : buf(_buf), src(_src) {}
 };
 
 class Block
@@ -393,6 +430,8 @@ public:
 				camera->look.z = glm::sin(camera->angle);
 			}
 			
+			if (keys[SDL_SCANCODE_SPACE]) sound->Play();
+			
 			// RENDER
 			shader->Bind();
 			texture->Bind();
@@ -444,7 +483,7 @@ public:
 		if (SDL_Init(SDL_INIT_VIDEO)) return Shutdown(1);
 
 		window = SDL_CreateWindow("3D game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL);
-		if (window == NULL) return Shutdown(2);
+		if (!window) return Shutdown(2);
 
 		SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
@@ -457,26 +496,33 @@ public:
 		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
 		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-		context = SDL_GL_CreateContext(window);
-		if (context == NULL || glewInit() != GLEW_OK) return Shutdown(3);
+		videoContext = SDL_GL_CreateContext(window);
+		if (!videoContext || glewInit() != GLEW_OK) return Shutdown(3);
+		
+		audioContext = alcCreateContext(alcOpenDevice(NULL), NULL);
+		if (!audioContext) return Shutdown(5);
+		alcMakeContextCurrent(audioContext);
 
 		shader = Shader::Load(0b101, "resources\\shaders\\basic");
-		if (!shader) return Shutdown(4);
+		if (!shader) return Shutdown(10);
 
 		texture = Texture::Load("resources\\textures\\mega.bmp");
-		if (!texture) return Shutdown(5);
+		if (!texture) return Shutdown(11);
+		
+		sound = Sound::Load("resources\\sounds\\shoot.wav");
+		if (!sound) return Shutdown(17);
 		
 		models = new Model*[5];
 		models[0] = Model::Load("resources\\models\\E.mol");
-		if (!models[0]) return Shutdown(6);
+		if (!models[0]) return Shutdown(12);
 		models[1] = Model::Load("resources\\models\\I.mol");
-		if (!models[1]) return Shutdown(7);
+		if (!models[1]) return Shutdown(13);
 		models[2] = Model::Load("resources\\models\\H.mol");
-		if (!models[2]) return Shutdown(8);
+		if (!models[2]) return Shutdown(14);
 		models[3] = Model::Load("resources\\models\\L.mol");
-		if (!models[3]) return Shutdown(9);
+		if (!models[3]) return Shutdown(15);
 		models[4] = Model::Load("resources\\models\\U.mol");
-		if (!models[4]) return Shutdown(10);
+		if (!models[4]) return Shutdown(16);
 		
 		map = Map::Generate(64, models);
 		
@@ -489,7 +535,6 @@ public:
 			camera = new Camera(glm::vec3(0, 0, 0), 0);
 		#endif
 		
-		
 		glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_CULL_FACE);
@@ -500,10 +545,13 @@ public:
 
 private:
 	static SDL_Window *window;
-	static SDL_GLContext context;
+	static SDL_GLContext videoContext;
+	static ALCcontext *audioContext;
 	
 	static Shader *shader;
 	static Texture *texture;
+	static Sound *sound;
+	
 	static Model **models;
 	static Map *map;
 	static bool *keys;
@@ -512,10 +560,18 @@ private:
 	static int Shutdown(int exit)
 	{
 		Array::Delete((void **)models, 5);
+		Pointer::Delete(sound);
 		Pointer::Delete(texture);
 		Pointer::Delete(shader);
-
-		if (context) SDL_GL_DeleteContext(context);
+		
+		if (audioContext)
+		{
+			ALCdevice *device = alcGetContextsDevice(audioContext);
+			alcMakeContextCurrent(NULL);
+			alcDestroyContext(audioContext);
+			alcCloseDevice(device);
+		}
+		if (videoContext) SDL_GL_DeleteContext(videoContext);
 		if (window) SDL_DestroyWindow(window);
 		SDL_Quit();
 
@@ -523,15 +579,18 @@ private:
 	}
 };
 
+SDL_Window *App::window = NULL;
+SDL_GLContext App::videoContext = NULL;
+ALCcontext *App::audioContext = NULL;
+
 Shader *App::shader = NULL;
 Texture *App::texture = NULL;
+Sound *App::sound = NULL;
+
 Model **App::models = NULL;
 Map *App::map = NULL;
 bool *App::keys = NULL;
 Camera *App::camera = NULL;
-
-SDL_Window *App::window = NULL;
-SDL_GLContext App::context = NULL;
 
 int main(int argc, char *argv[])
 {
