@@ -374,23 +374,11 @@ public:
 			}
 			
 			// INPUT CHECKING
-			if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])
-			{
-				map->Move(camera->position, camera->look * CAMERA_SPEED);
-			}
-			else if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN])
-			{
-				map->Move(camera->position, camera->look * -CAMERA_SPEED);
-			}
+			if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP]) map->Move(camera->position, camera->look * CAMERA_SPEED);
+			else if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN]) map->Move(camera->position, camera->look * -CAMERA_SPEED);
 			
-			if (keys[SDL_SCANCODE_A])
-			{
-				map->Move(camera->position, glm::vec3(camera->look.z * CAMERA_SPEED, 0, camera->look.x * -CAMERA_SPEED));
-			}
-			else if (keys[SDL_SCANCODE_D])
-			{
-				map->Move(camera->position, glm::vec3(camera->look.z * -CAMERA_SPEED, 0, camera->look.x * CAMERA_SPEED));
-			}
+			if (keys[SDL_SCANCODE_A]) map->Move(camera->position, glm::vec3(camera->look.z * CAMERA_SPEED, 0, camera->look.x * -CAMERA_SPEED));
+			else if (keys[SDL_SCANCODE_D]) map->Move(camera->position, glm::vec3(camera->look.z * -CAMERA_SPEED, 0, camera->look.x * CAMERA_SPEED));
 			
 			if (keys[SDL_SCANCODE_LEFT])
 			{
