@@ -433,7 +433,7 @@ public:
 			if (keys[SDL_SCANCODE_SPACE]) sound->Play();
 			
 			// RENDER
-			shader->Bind();
+			worldShader->Bind();
 			texture->Bind();
 			
 			glm::mat4 uProjection = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.01f, 100.0f);
@@ -469,7 +469,7 @@ public:
 			}
 			
 			texture->Unbind();
-			shader->Unbind();
+			worldShader->Unbind();
 
 			SDL_GL_SwapWindow(window);
 			SDL_Delay(FPS);
@@ -503,8 +503,8 @@ public:
 		if (!audioContext) return Shutdown(5);
 		alcMakeContextCurrent(audioContext);
 
-		shader = Shader::Load(0b101, "resources\\shaders\\basic");
-		if (!shader) return Shutdown(10);
+		worldShader = Shader::Load(0b101, "resources\\shaders\\world");
+		if (!worldShader) return Shutdown(10);
 
 		texture = Texture::Load("resources\\textures\\mega.bmp");
 		if (!texture) return Shutdown(11);
@@ -548,7 +548,8 @@ private:
 	static SDL_GLContext videoContext;
 	static ALCcontext *audioContext;
 	
-	static Shader *shader;
+	static Shader *worldShader;
+	
 	static Texture *texture;
 	static Sound *sound;
 	
@@ -562,7 +563,7 @@ private:
 		Array::Delete((void **)models, 5);
 		Pointer::Delete(sound);
 		Pointer::Delete(texture);
-		Pointer::Delete(shader);
+		Pointer::Delete(worldShader);
 		
 		if (audioContext)
 		{
@@ -583,7 +584,8 @@ SDL_Window *App::window = NULL;
 SDL_GLContext App::videoContext = NULL;
 ALCcontext *App::audioContext = NULL;
 
-Shader *App::shader = NULL;
+Shader *App::worldShader = NULL;
+
 Texture *App::texture = NULL;
 Sound *App::sound = NULL;
 
