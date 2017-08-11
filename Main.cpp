@@ -16,15 +16,17 @@
 #define BUFFER_WIDTH 320
 #define BUFFER_HEIGHT 240
 
+#define FPS 16
+
 #define MAX_KEYS 128
 
-#define CAMERA_SPEED 0.1f
-#define CAMERA_ANGLE_SPEED 0.1f
+#define CAMERA_SPEED 0.05f
+#define CAMERA_ANGLE_SPEED 0.05f
 #define CAMERA_VISIBLE_DISTANCE 3
 
-#define HITBOX_SIZE 0.1f
+#define HITBOX_SIZE 0.05f
 
-#define TOP_VIEW_MODE 1
+#define TOP_VIEW_MODE 0
 
 struct Pointer
 {
@@ -260,18 +262,26 @@ public:
 		Array::Delete((void **)blocks, size.x * size.y);
 	}
 	
-	void Move(glm::vec3 &position, const glm::vec3 &direction)
+	bool CanMove(glm::vec3 &position, const glm::vec3 &direction)
 	{
 		float x = position.x + direction.x;
 		float z = position.z + direction.z;
 		float hx = x - origin.x + 0.5f + (direction.x < 0 ? -HITBOX_SIZE : HITBOX_SIZE);
 		float hz = z - origin.y + 0.5f + (direction.z < 0 ? -HITBOX_SIZE : HITBOX_SIZE);
 		
-		if (hx < 0 || hx >= size.x || hz < 0 || hz >= size.y) return;
-		if (blocks[(int)hz * size.x + (int)hx] == NULL) return;
+		if (hx < 0 || hx >= size.x || hz < 0 || hz >= size.y) return false;
+		if (blocks[(int)hz * size.x + (int)hx] == NULL) return false;
 		
 		position.x = x;
 		position.z = z;
+		return true;
+	}
+	
+	void Move(glm::vec3 &position, const glm::vec3 &direction)
+	{
+		if (CanMove(position, direction)) return;
+		if (CanMove(position, glm::vec3(0, 0, direction.z))) return;
+		if (CanMove(position, glm::vec3(direction.x, 0, 0))) return;
 	}
 	
 	static Map *Generate(GLuint size, Model **models)
@@ -435,7 +445,7 @@ public:
 			shader->Unbind();
 
 			SDL_GL_SwapWindow(window);
-			SDL_Delay(33);
+			SDL_Delay(FPS);
 		}
 
 		return Shutdown(0);
