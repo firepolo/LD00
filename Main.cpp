@@ -271,13 +271,44 @@ private:
 	Sound(GLuint _buf, GLuint _src) : buf(_buf), src(_src) {}
 };
 
+class Enemy
+{
+public:
+	static Model *model;
+
+	glm::vec3 position;
+	
+	Enemy(glm::vec3 _position) : position(_position) {}
+};
+
+Model *Enemy::model = NULL;
+
 class Block
 {
 public:
 	Model *model;
 	glm::mat4 transform;
+	std::vector<Enemy> enemies;
 	
 	Block(Model *_model, glm::mat4 _transform) : model(_model), transform(_transform) {}
+	~Block() {}
+	
+	void Draw(Camera *camera)
+	{
+		model->Bind();
+		glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&transform);
+		glDrawArrays(GL_TRIANGLES, 0, model->count);
+		model->Unbind();
+		
+		for (std::vector<Enemy>::iterator it = enemies.begin(), end = enemies.end(); it != end; ++it)
+		{
+			Enemy::model->Bind();
+			glm::mat4 uModel = glm::rotate(glm::translate(glm::mat4(1), it->position), (float)atan2(camera->position.x - it->position.x, camera->position.z - it->position.z), glm::vec3(0, 1, 0));
+			glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&uModel);
+			glDrawArrays(GL_TRIANGLES, 0, Enemy::model->count);
+			Enemy::model->Unbind();
+		}
+	}
 };
 
 class Map
@@ -319,6 +350,22 @@ public:
 		if (CanMove(position, direction)) return;
 		if (CanMove(position, glm::vec3(0, 0, direction.z))) return;
 		if (CanMove(position, glm::vec3(direction.x, 0, 0))) return;
+	}
+	
+	void AddEnemies(GLuint number)
+	{
+		while (number)
+		{
+			float x = float(rand() / (float)RAND_MAX * size.x);
+			float z = float(rand() / (float)RAND_MAX * size.y);
+			GLuint i = (int)z * size.x + (int)x;
+			if (blocks[i])
+			{
+				blocks[i]->enemies.push_back(Enemy(glm::vec3(x + origin.x - 0.5, 0, z + origin.y - 0.5)));
+				--number;
+				std::cout << number << ',' << x << ':' << z << std::endl;
+			}
+		}
 	}
 	
 	static Map *Generate(GLuint size, Model **models)
@@ -459,12 +506,7 @@ public:
 					if (x < 0 || x >= map->size.x) continue;
 					
 					Block *b = map->blocks[z * map->size.x + x];
-					if (b == NULL) continue;
-					
-					b->model->Bind();
-					glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&b->transform);
-					glDrawArrays(GL_TRIANGLES, 0, b->model->count);
-					b->model->Unbind();
+					if (b != NULL) b->Draw(camera);
 				}
 			}
 			
@@ -523,8 +565,11 @@ public:
 		if (!models[3]) return Shutdown(15);
 		models[4] = Model::Load("resources\\models\\U.mol");
 		if (!models[4]) return Shutdown(16);
+		Enemy::model = Model::Load("resources\\models\\enemy.mol");
+		if (!Enemy::model) return Shutdown(17);
 		
 		map = Map::Generate(64, models);
+		map->AddEnemies(32);
 		
 		keys = new bool[MAX_KEYS];
 		memset(keys, 0, MAX_KEYS);
@@ -560,7 +605,11 @@ private:
 
 	static int Shutdown(int exit)
 	{
+		Pointer::Delete(camera);
+		Pointer::Delete(keys);
+		Pointer::Delete(map);
 		Array::Delete((void **)models, 5);
+		
 		Pointer::Delete(sound);
 		Pointer::Delete(texture);
 		Pointer::Delete(worldShader);
