@@ -8,5 +8,7 @@ layout(location = 3) uniform sampler2D uSampler;
 
 void main()
 {
-	oColor = texture(uSampler, vCoord);
+	vec4 color = texture(uSampler, vCoord);
+	if (color.rgb == vec3(1, 140.0/255.0, 0)) discard;
+	oColor = color;
 }
