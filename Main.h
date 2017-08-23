@@ -12,7 +12,7 @@
 #include <al/al.h>
 #include <al/alc.h>
 
-#define TOP_VIEW_MODE 0
+#define TOP_VIEW_MODE 1
 
 #define WINDOW_WIDTH 320
 #define WINDOW_HEIGHT 240
@@ -31,6 +31,9 @@
 #define HITBOX_SIZE 0.05f
 
 #define ENEMY_SPEED 0.02f
+#define ENEMY_DECISIONS_TICKS 60
+#define ENEMY_ANIMATION_WALK_FRAMES 2
+#define ENEMY_ANIMATION_WALK_TICKS 16
 
 struct Random
 {
@@ -152,21 +155,20 @@ struct Camera
 	Camera(glm::vec3 _position, float _angle);
 };
 
-class Enemy
+struct Enemy
 {
-public:
 	glm::vec3 position;
 	glm::vec3 direction;
-	GLuint tick, decisionTick;
+	GLuint decisionTick, maxDecisionTick;
+	GLuint animation, frame, animationTick;
 	
 	void SetDirection();
 	Enemy(glm::vec3 _position);
 	void Update();
 };
 
-class Block
+struct Block
 {
-public:
 	Model *model;
 	glm::mat4 transform;
 	std::vector<Enemy> enemies;
@@ -177,9 +179,8 @@ public:
 	void Draw();
 };
 
-class Map
+struct Map
 {
-public:
 	static Map *INSTANCE;
 
 	Block **blocks;
@@ -188,6 +189,11 @@ public:
 	
 	Map(Block **blocks, const Point &size, const Point &origin);
 	~Map();
+	
+	inline float GetX(float x);
+	inline float GetY(float y);
+	inline Block *GetBlock(const glm::vec3 &position);
+	
 	bool CanMove(glm::vec3 &position, const glm::vec3 &direction);
 	void Move(glm::vec3 &position, const glm::vec3 &direction);
 	void AddEnemies(GLuint number);

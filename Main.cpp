@@ -214,18 +214,26 @@ void Enemy::SetDirection()
 {
 	direction.x = Random::GetNumber<float>(-ENEMY_SPEED, ENEMY_SPEED);
 	direction.y = Random::GetNumber<float>(-ENEMY_SPEED, ENEMY_SPEED);
-	tick = decisionTick;
+	decisionTick = Random::GetNumber<GLuint>(0, ENEMY_DECISIONS_TICKS);
 }
 
 Enemy::Enemy(glm::vec3 _position) : position(_position)
 {
-	decisionTick = Random::GetNumber<GLuint>(20, 100);
+	decisionTick = ENEMY_DECISIONS_TICKS;
+	animationTick = ENEMY_ANIMATION_WALK_TICKS;
+	animation = 0;
+	frame = 0;
 	SetDirection();
 }
 
 void Enemy::Update()
 {
-	if (--tick == 0) SetDirection();
+	if (--decisionTick == 0) SetDirection();
+	if (--animationTick == 0)
+	{
+		frame = (frame + 1) % ENEMY_ANIMATION_WALK_FRAMES;
+		animationTick = ENEMY_ANIMATION_WALK_TICKS;
+	}
 	
 	Map::INSTANCE->Move(position, direction);
 }
@@ -235,6 +243,9 @@ Block::~Block() {}
 
 void Block::Draw()
 {
+	glUniform1i(3, 0);
+	glUniform1i(4, 0);
+	
 	model->Bind();
 	glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&transform);
 	glDrawArrays(GL_TRIANGLES, 0, model->count);
@@ -247,8 +258,18 @@ void Block::Draw()
 		Model::ENEMY->Bind();
 		glm::mat4 uModel = glm::rotate(glm::translate(glm::mat4(1), it->position), (float)atan2(Camera::INSTANCE->position.x - it->position.x, Camera::INSTANCE->position.z - it->position.z), glm::vec3(0, 1, 0));
 		glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&uModel);
+		glUniform1i(3, it->animation);
+		glUniform1i(4, it->frame);
 		glDrawArrays(GL_TRIANGLES, 0, Model::ENEMY->count);
 		Model::ENEMY->Unbind();
+		
+		/*Block *block = Map::INSTANCE->GetBlock(it->position);
+		if (block == this) ++it;
+		else
+		{
+			block->enemies.push_back(*it);
+			enemies.erase(it);
+		}*/
 	}
 }
 
@@ -266,12 +287,16 @@ Map::~Map()
 	Array::Delete((void **)blocks, size.x * size.y);
 }
 
+inline float Map::GetX(float x) { return x - origin.x + 0.5f; }
+inline float Map::GetY(float y) { return y - origin.y + 0.5f; }
+inline Block *Map::GetBlock(const glm::vec3 &position) { return blocks[(int)GetY(position.z) * size.x + (int)GetX(position.x)]; }
+
 bool Map::CanMove(glm::vec3 &position, const glm::vec3 &direction)
 {
 	float x = position.x + direction.x;
 	float z = position.z + direction.z;
-	float hx = x - origin.x + 0.5f + (direction.x < 0 ? -HITBOX_SIZE : HITBOX_SIZE);
-	float hz = z - origin.y + 0.5f + (direction.z < 0 ? -HITBOX_SIZE : HITBOX_SIZE);
+	float hx = GetX(x) + (direction.x < 0 ? -HITBOX_SIZE : HITBOX_SIZE);
+	float hz = GetY(z) + (direction.z < 0 ? -HITBOX_SIZE : HITBOX_SIZE);
 	
 	if (hx < 0 || hx >= size.x || hz < 0 || hz >= size.y) return false;
 	if (blocks[(int)hz * size.x + (int)hx] == NULL) return false;
@@ -292,8 +317,6 @@ void Map::AddEnemies(GLuint number)
 {
 	while (number)
 	{
-		/*float x = float(rand() / (float)RAND_MAX * size.x);
-		float z = float(rand() / (float)RAND_MAX * size.y);*/
 		float x = Random::GetNumber<float>(0, size.x);
 		float z = Random::GetNumber<float>(0, size.y);
 		GLuint i = (int)z * size.x + (int)x;
@@ -430,7 +453,7 @@ int App::Start()
 		
 		glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&uView);
 		glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&uProjection);
-		glUniform1i(3, 0);
+		
 		
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
@@ -489,7 +512,7 @@ int App::Initialize()
 	if (!Texture::GLOBAL) return Shutdown(11);
 	
 	Sound::TEST = Sound::Load("resources\\sounds\\shoot.wav");
-	if (!Sound::TEST) return Shutdown(17);
+	if (!Sound::TEST) return Shutdown(18);
 	
 	Model::E = Model::Load("resources\\models\\E.mol");
 	if (!Model::E) return Shutdown(12);
@@ -520,6 +543,10 @@ int App::Initialize()
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_CULL_FACE);
 	glClearColor(0.1, 0.5, 0.8, 1);
+	
+	Shader::WORLD->Bind();
+	glUniform1i(5, 0);
+	Shader::WORLD->Unbind();
 	
 	return 0;
 }
