@@ -213,7 +213,7 @@ Camera::Camera(glm::vec3 _position, float _angle) : position(_position), angle(_
 void Enemy::SetDirection()
 {
 	direction.x = Random::GetNumber<float>(-ENEMY_SPEED, ENEMY_SPEED);
-	direction.y = Random::GetNumber<float>(-ENEMY_SPEED, ENEMY_SPEED);
+	direction.z = Random::GetNumber<float>(-ENEMY_SPEED, ENEMY_SPEED);
 	decisionTick = Random::GetNumber<GLuint>(0, ENEMY_DECISIONS_TICKS);
 }
 
@@ -238,6 +238,43 @@ void Enemy::Update()
 	Map::INSTANCE->Move(position, direction);
 }
 
+template<GLuint chunk, GLuint ptrSize = sizeof(void *)>
+EnemyList<chunk, ptrSize>::EnemyList()
+{
+	data = new Enemy*[chunk];
+	capacity = chunk;
+	size = 0;
+}
+
+template<GLuint chunk, GLuint ptrSize = sizeof(void *)>
+EnemyList<chunk, ptrSize>::~EnemyList() { Array::Delete((void **)data, 0); }
+
+template<GLuint chunk, GLuint ptrSize = sizeof(void *)>
+void EnemyList<chunk, ptrSize>::Add(Enemy *enemy)
+{
+	GLuint last = size;
+	
+	if (++size >= capacity)
+	{
+		capacity += chunk;
+		Enemy **newData = new Enemy*[capacity];
+		memcpy(newData, data, last * ptrSize);
+		Array::Delete((void **)data, 0);
+		data = newData;
+	}
+	
+	data[last] = enemy;
+}
+
+template<GLuint chunk, GLuint ptrSize = sizeof(void *)>
+void EnemyList<chunk, ptrSize>::Remove(GLuint index)
+{
+	if (size == 0 || index < 0 || index >= size) return;
+	
+	Enemy **dst = data + index;
+	memmove(dst, dst + 1, (--size - index) * ptrSize);
+}
+
 Block::Block(Model *_model, glm::mat4 _transform) : model(_model), transform(_transform) {}
 Block::~Block() {}
 
@@ -251,8 +288,9 @@ void Block::Draw()
 	glDrawArrays(GL_TRIANGLES, 0, model->count);
 	model->Unbind();
 	
-	for (std::vector<Enemy>::iterator it = enemies.begin(), end = enemies.end(); it != end; ++it)
+	for (GLuint i = 0; i < enemies.size;)
 	{
+		Enemy *it = enemies.data[i];
 		it->Update();
 		
 		Model::ENEMY->Bind();
@@ -263,13 +301,14 @@ void Block::Draw()
 		glDrawArrays(GL_TRIANGLES, 0, Model::ENEMY->count);
 		Model::ENEMY->Unbind();
 		
-		/*Block *block = Map::INSTANCE->GetBlock(it->position);
-		if (block == this) ++it;
+		Block *block = Map::INSTANCE->GetBlock(it->position);
+		
+		if (block == this || block == NULL) ++i;
 		else
 		{
-			block->enemies.push_back(*it);
-			enemies.erase(it);
-		}*/
+			block->enemies.Add(it);
+			enemies.Remove(i);
+		}
 	}
 }
 
@@ -285,11 +324,17 @@ Map::Map(Block **blocks, const Point &size, const Point &origin)
 Map::~Map()
 {
 	Array::Delete((void **)blocks, size.x * size.y);
+	Array::Delete((void **)&enemies[0], enemies.size());
 }
 
 inline float Map::GetX(float x) { return x - origin.x + 0.5f; }
 inline float Map::GetY(float y) { return y - origin.y + 0.5f; }
-inline Block *Map::GetBlock(const glm::vec3 &position) { return blocks[(int)GetY(position.z) * size.x + (int)GetX(position.x)]; }
+inline Block *Map::GetBlock(const glm::vec3 &position)
+{
+	int x = (int)GetX(position.x);
+	int y = (int)GetY(position.z);
+	return x < 0 || x >= size.x || y < 0 || y >= size.y ? NULL : blocks[y * size.x + x];
+}
 
 bool Map::CanMove(glm::vec3 &position, const glm::vec3 &direction)
 {
@@ -322,7 +367,9 @@ void Map::AddEnemies(GLuint number)
 		GLuint i = (int)z * size.x + (int)x;
 		if (blocks[i])
 		{
-			blocks[i]->enemies.push_back(Enemy(glm::vec3(x + origin.x - 0.5, 0, z + origin.y - 0.5)));
+			Enemy *enemy = new Enemy(glm::vec3(x + origin.x - 0.5, 0, z + origin.y - 0.5));
+			enemies.push_back(enemy);
+			blocks[i]->enemies.Add(enemy);
 			--number;
 		}
 	}

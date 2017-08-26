@@ -167,11 +167,25 @@ struct Enemy
 	void Update();
 };
 
+template<GLuint chunk, GLuint ptrSize = sizeof(void *)>
+struct EnemyList
+{
+	Enemy **data;
+	GLuint size;
+	GLuint capacity;
+	
+	EnemyList();
+	~EnemyList();
+	
+	void Add(Enemy *enemy);
+	void Remove(GLuint index);
+};
+
 struct Block
 {
 	Model *model;
 	glm::mat4 transform;
-	std::vector<Enemy> enemies;
+	EnemyList<4> enemies;
 	
 	Block(Model *_model, glm::mat4 _transform);
 	~Block();
@@ -186,6 +200,7 @@ struct Map
 	Block **blocks;
 	Point size;
 	Point origin;
+	std::vector<Enemy *> enemies;
 	
 	Map(Block **blocks, const Point &size, const Point &origin);
 	~Map();
