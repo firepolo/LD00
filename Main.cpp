@@ -223,11 +223,14 @@ Enemy::Enemy(glm::vec3 _position) : position(_position)
 	animationTick = ENEMY_ANIMATION_WALK_TICKS;
 	animation = 0;
 	frame = 0;
+	isDead = false;
 	SetDirection();
 }
 
 void Enemy::Update()
 {
+	if (isDead) return;
+	
 	if (--decisionTick == 0) SetDirection();
 	if (--animationTick == 0)
 	{
@@ -484,7 +487,40 @@ int App::Start()
 			Camera::INSTANCE->look.z = glm::sin(Camera::INSTANCE->angle);
 		}
 		
-		if (Input::KEYBOARD[SDL_SCANCODE_SPACE]) Sound::TEST->Play();
+		if (Input::KEYBOARD[SDL_SCANCODE_SPACE])
+		{
+			bool hit = false;
+			
+			for (int z = Camera::INSTANCE->position.z - Map::INSTANCE->origin.y + 0.5f - 1, ez = z + 2; z <= ez; ++z)
+			{
+				if (z < 0 || z >= Map::INSTANCE->size.y) continue;
+				
+				for (int x = Camera::INSTANCE->position.x - Map::INSTANCE->origin.x + 0.5f - 1, ex = x + 2; x <= ex; ++x)
+				{
+					if (x < 0 || x >= Map::INSTANCE->size.x) continue;
+					
+					Block *b = Map::INSTANCE->blocks[z * Map::INSTANCE->size.x + x];
+					if (b == NULL) continue;
+					
+					for (int i = 0; i < b->enemies.size; ++i)
+					{
+						Enemy *enemy = b->enemies.data[i];
+						if (enemy->isDead) continue;
+						
+						glm::vec3 relative = enemy->position - Camera::INSTANCE->position;
+						float dp = glm::dot(Camera::INSTANCE->look, relative);
+						
+						if (dp > 0 && glm::length(relative) < HIT_DISTANCE)
+						{
+							enemy->isDead = true;
+							hit = true;
+						}
+					}
+				}
+			}
+			
+			if (hit) Sound::TEST->Play();
+		}
 		
 		// RENDER
 		Shader::WORLD->Bind();

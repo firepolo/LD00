@@ -12,7 +12,7 @@
 #include <al/al.h>
 #include <al/alc.h>
 
-#define TOP_VIEW_MODE 1
+#define TOP_VIEW_MODE 0
 
 #define WINDOW_WIDTH 320
 #define WINDOW_HEIGHT 240
@@ -29,11 +29,13 @@
 #define CAMERA_VISIBLE_DISTANCE 3
 
 #define HITBOX_SIZE 0.05f
+#define HIT_DISTANCE 0.3f
 
 #define ENEMY_SPEED 0.02f
 #define ENEMY_DECISIONS_TICKS 60
 #define ENEMY_ANIMATION_WALK_FRAMES 2
 #define ENEMY_ANIMATION_WALK_TICKS 16
+
 
 struct Random
 {
@@ -161,6 +163,7 @@ struct Enemy
 	glm::vec3 direction;
 	GLuint decisionTick, maxDecisionTick;
 	GLuint animation, frame, animationTick;
+	bool isDead;
 	
 	void SetDirection();
 	Enemy(glm::vec3 _position);
