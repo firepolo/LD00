@@ -16,5 +16,5 @@ layout(location = 4) uniform int uAnimationFrame;
 void main()
 {
 	gl_Position = (uProjection * uView * uModel) * vec4(iVertex, 1);
-	vCoord = vec2(iCoord.x + uAnimationFrame * 0.25, iCoord.y + uAnimationIndex * 0.25);
+	vCoord = vec2(iCoord.x + uAnimationFrame * 0.25, iCoord.y - uAnimationIndex * 0.25);
 }

@@ -33,8 +33,9 @@
 
 #define ENEMY_SPEED 0.02f
 #define ENEMY_DECISIONS_TICKS 60
+#define ENEMY_ANIMATION_TICKS 16
 #define ENEMY_ANIMATION_WALK_FRAMES 2
-#define ENEMY_ANIMATION_WALK_TICKS 16
+#define ENEMY_ANIMATION_FALL_FRAMES 3
 
 
 struct Random
@@ -163,10 +164,11 @@ struct Enemy
 	glm::vec3 direction;
 	GLuint decisionTick, maxDecisionTick;
 	GLuint animation, frame, animationTick;
-	bool isDead;
+	
+	Enemy(glm::vec3 _position);
 	
 	void SetDirection();
-	Enemy(glm::vec3 _position);
+	void PlayFallAnimation();
 	void Update();
 };
 
@@ -228,6 +230,8 @@ private:
 	static SDL_Window *window;
 	static SDL_GLContext videoContext;
 	static ALCcontext *audioContext;
+	
+	static const glm::mat4 PROJECTION;
 
 	static int Shutdown(int exit);
 };

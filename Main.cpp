@@ -210,6 +210,15 @@ bool Point::operator==(const Point &o) const
 Camera *Camera::INSTANCE = NULL;
 Camera::Camera(glm::vec3 _position, float _angle) : position(_position), angle(_angle), look(glm::vec3(glm::cos(angle), 0, glm::sin(angle))) {}
 
+Enemy::Enemy(glm::vec3 _position) : position(_position)
+{
+	decisionTick = ENEMY_DECISIONS_TICKS;
+	animationTick = ENEMY_ANIMATION_TICKS;
+	animation = 0;
+	frame = 0;
+	SetDirection();
+}
+
 void Enemy::SetDirection()
 {
 	direction.x = Random::GetNumber<float>(-ENEMY_SPEED, ENEMY_SPEED);
@@ -217,25 +226,36 @@ void Enemy::SetDirection()
 	decisionTick = Random::GetNumber<GLuint>(0, ENEMY_DECISIONS_TICKS);
 }
 
-Enemy::Enemy(glm::vec3 _position) : position(_position)
+void Enemy::PlayFallAnimation()
 {
-	decisionTick = ENEMY_DECISIONS_TICKS;
-	animationTick = ENEMY_ANIMATION_WALK_TICKS;
-	animation = 0;
 	frame = 0;
-	isDead = false;
-	SetDirection();
+	animation = 1;
+	animationTick = ENEMY_ANIMATION_FALL_FRAMES;
 }
 
 void Enemy::Update()
 {
-	if (isDead) return;
+	if (animation == 2) return;
+	
+ 	if (animation == 1)
+	{
+		if (--animationTick == 0)
+		{
+			if (frame++ == ENEMY_ANIMATION_FALL_FRAMES)
+			{
+				animation = 2;
+				frame = 0;
+			}
+			animationTick = ENEMY_ANIMATION_TICKS;
+		}
+		return;
+	}
 	
 	if (--decisionTick == 0) SetDirection();
 	if (--animationTick == 0)
 	{
 		frame = (frame + 1) % ENEMY_ANIMATION_WALK_FRAMES;
-		animationTick = ENEMY_ANIMATION_WALK_TICKS;
+		animationTick = ENEMY_ANIMATION_TICKS;
 	}
 	
 	Map::INSTANCE->Move(position, direction);
@@ -446,6 +466,8 @@ Map *Map::Generate(GLuint size)
 	return new Map(blocks, { w, h }, { l, t });
 }
 
+const glm::mat4 App::PROJECTION = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.01f, 100.0f);
+
 SDL_Window *App::window = NULL;
 SDL_GLContext App::videoContext = NULL;
 ALCcontext *App::audioContext = NULL;
@@ -505,14 +527,14 @@ int App::Start()
 					for (int i = 0; i < b->enemies.size; ++i)
 					{
 						Enemy *enemy = b->enemies.data[i];
-						if (enemy->isDead) continue;
+						if (enemy->animation == 2) continue;
 						
 						glm::vec3 relative = enemy->position - Camera::INSTANCE->position;
 						float dp = glm::dot(Camera::INSTANCE->look, relative);
 						
 						if (dp > 0 && glm::length(relative) < HIT_DISTANCE)
 						{
-							enemy->isDead = true;
+							enemy->PlayFallAnimation();
 							hit = true;
 						}
 					}
@@ -526,8 +548,6 @@ int App::Start()
 		Shader::WORLD->Bind();
 		Texture::GLOBAL->Bind();
 		
-		glm::mat4 uProjection = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.01f, 100.0f);
-		
 	#if TOP_VIEW_MODE==1
 		glm::mat4 uView = glm::lookAt(Camera::INSTANCE->position, glm::vec3(Camera::INSTANCE->position.x + Camera::INSTANCE->look.x, 2, Camera::INSTANCE->position.z + Camera::INSTANCE->look.z), glm::vec3(0, 1, 0));
 	#else
@@ -535,8 +555,7 @@ int App::Start()
 	#endif
 		
 		glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&uView);
-		glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&uProjection);
-		
+		glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&PROJECTION);
 		
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
