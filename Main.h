@@ -24,9 +24,10 @@
 
 #define MAX_KEYS 128
 
-#define CAMERA_SPEED 0.05f
-#define CAMERA_ANGLE_SPEED 0.05f
-#define CAMERA_VISIBLE_DISTANCE 3
+#define PLAYER_SPEED 0.05f
+#define PLAYER_ANGLE_SPEED 0.05f
+#define PLAYER_VISIBLE_DISTANCE 3
+#define PLAYER_ATTACK_TICKS 16
 
 #define HITBOX_SIZE 0.05f
 #define HIT_DISTANCE 0.3f
@@ -57,6 +58,13 @@ struct Array
 struct File
 {
 	static char *ReadAll(const char *filename, GLuint *size = 0);
+};
+
+struct Mat4
+{
+	static const glm::mat4 PROJECTION;
+	static const glm::mat4 IDENTITY;
+	static const glm::mat4 HAND;
 };
 
 class Shader
@@ -147,15 +155,22 @@ struct Point
 	bool operator==(const Point &o) const;
 };
 
-struct Camera
+struct Player
 {
-	static Camera *INSTANCE;
+	static Player *INSTANCE;
 	
 	glm::vec3 position;
 	glm::vec3 look;
 	float angle;
+	float moving;
 	
-	Camera(glm::vec3 _position, float _angle);
+	GLuint frame;
+	GLuint attackTicks;
+	
+	Player(glm::vec3 _position, float _angle);
+	
+	void CheckInput();
+	void Draw();
 };
 
 struct Enemy
@@ -217,6 +232,8 @@ struct Map
 	bool CanMove(glm::vec3 &position, const glm::vec3 &direction);
 	void Move(glm::vec3 &position, const glm::vec3 &direction);
 	void AddEnemies(GLuint number);
+	void Draw();
+	
 	static Map *Generate(GLuint size);
 };
 
@@ -230,8 +247,6 @@ private:
 	static SDL_Window *window;
 	static SDL_GLContext videoContext;
 	static ALCcontext *audioContext;
-	
-	static const glm::mat4 PROJECTION;
 
 	static int Shutdown(int exit);
 };

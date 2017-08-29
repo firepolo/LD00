@@ -36,6 +36,10 @@ char *File::ReadAll(const char *filename, GLuint *size)
 	return p;
 }
 
+const glm::mat4 Mat4::PROJECTION = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.01f, 100.0f);
+const glm::mat4 Mat4::IDENTITY = glm::mat4(1);
+const glm::mat4 Mat4::HAND = glm::scale(Mat4::IDENTITY, glm::vec3(2, 2, 0));
+
 Shader *Shader::WORLD = NULL;
 
 Shader *Shader::Load(GLuint mask, const std::string &filename)
@@ -207,8 +211,105 @@ bool Point::operator==(const Point &o) const
 	return *((int*)this) == *((int*)&o);
 }
 
-Camera *Camera::INSTANCE = NULL;
-Camera::Camera(glm::vec3 _position, float _angle) : position(_position), angle(_angle), look(glm::vec3(glm::cos(angle), 0, glm::sin(angle))) {}
+Player *Player::INSTANCE = NULL;
+Player::Player(glm::vec3 _position, float _angle) : position(_position), angle(_angle), look(glm::vec3(glm::cos(angle), 0, glm::sin(angle))), frame(1), attackTicks(0), moving(0) {}
+
+void Player::CheckInput()
+{
+	char moveMask = Input::KEYBOARD[SDL_SCANCODE_W] || Input::KEYBOARD[SDL_SCANCODE_UP];
+	moveMask |= (Input::KEYBOARD[SDL_SCANCODE_S] || Input::KEYBOARD[SDL_SCANCODE_DOWN]) << 1;
+	moveMask |= Input::KEYBOARD[SDL_SCANCODE_A] << 2;
+	moveMask |= Input::KEYBOARD[SDL_SCANCODE_D] << 3;
+	
+	if (moveMask & 1) Map::INSTANCE->Move(position, look * PLAYER_SPEED);
+	else if (moveMask & 2) Map::INSTANCE->Move(position, look * -PLAYER_SPEED);
+	
+	if (moveMask & 4) Map::INSTANCE->Move(position, glm::vec3(look.z * PLAYER_SPEED, 0, look.x * -PLAYER_SPEED));
+	else if (moveMask & 8) Map::INSTANCE->Move(position, glm::vec3(look.z * -PLAYER_SPEED, 0, look.x * PLAYER_SPEED));
+	
+	if (Input::KEYBOARD[SDL_SCANCODE_LEFT])
+	{
+		angle -= PLAYER_ANGLE_SPEED;
+		look.x = glm::cos(angle);
+		look.z = glm::sin(angle);
+	}
+	else if (Input::KEYBOARD[SDL_SCANCODE_RIGHT])
+	{
+		angle += PLAYER_ANGLE_SPEED;
+		look.x = glm::cos(angle);
+		look.z = glm::sin(angle);
+	}
+	
+	if (moveMask)
+	{
+		moving += 0.25f;
+		position.y = glm::cos(moving) * 0.05f;
+	}
+	
+	if (attackTicks > 1)
+	{
+		--attackTicks;
+		return;
+	}
+	
+	frame = 1;
+	
+	if (attackTicks == 1 && Input::KEYBOARD[SDL_SCANCODE_SPACE]) return;
+	
+	attackTicks = 0;
+	
+	if (Input::KEYBOARD[SDL_SCANCODE_SPACE])
+	{
+		attackTicks = PLAYER_ATTACK_TICKS;
+		frame = 2;
+		
+		bool hit = false;
+		
+		for (int z = position.z - Map::INSTANCE->origin.y + 0.5f - 1, ez = z + 2; z <= ez; ++z)
+		{
+			if (z < 0 || z >= Map::INSTANCE->size.y) continue;
+			
+			for (int x = position.x - Map::INSTANCE->origin.x + 0.5f - 1, ex = x + 2; x <= ex; ++x)
+			{
+				if (x < 0 || x >= Map::INSTANCE->size.x) continue;
+				
+				Block *b = Map::INSTANCE->blocks[z * Map::INSTANCE->size.x + x];
+				if (b == NULL) continue;
+				
+				for (int i = 0; i < b->enemies.size; ++i)
+				{
+					Enemy *enemy = b->enemies.data[i];
+					if (enemy->animation > 0) continue;
+					
+					glm::vec3 relative = enemy->position - position;
+					float dp = glm::dot(look, relative);
+					
+					if (dp > 0 && glm::length(relative) < HIT_DISTANCE)
+					{
+						enemy->PlayFallAnimation();
+						hit = true;
+					}
+				}
+			}
+		}
+		
+		if (hit) Sound::TEST->Play();
+	}
+	else if (!Input::KEYBOARD[SDL_SCANCODE_SPACE]) frame = 1;
+}
+
+void Player::Draw()
+{
+	Model::ENEMY->Bind();
+	
+	glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&Mat4::IDENTITY);
+	glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&Mat4::HAND);
+	glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&Mat4::IDENTITY);
+	glUniform1i(3, 2);
+	glUniform1i(4, frame);
+	glDrawArrays(GL_TRIANGLES, 0, Model::ENEMY->count);
+	Model::ENEMY->Unbind();
+}
 
 Enemy::Enemy(glm::vec3 _position) : position(_position)
 {
@@ -317,7 +418,7 @@ void Block::Draw()
 		it->Update();
 		
 		Model::ENEMY->Bind();
-		glm::mat4 uModel = glm::rotate(glm::translate(glm::mat4(1), it->position), (float)atan2(Camera::INSTANCE->position.x - it->position.x, Camera::INSTANCE->position.z - it->position.z), glm::vec3(0, 1, 0));
+		glm::mat4 uModel = glm::rotate(glm::translate(Mat4::IDENTITY, it->position), (float)atan2(Player::INSTANCE->position.x - it->position.x, Player::INSTANCE->position.z - it->position.z), glm::vec3(0, 1, 0));
 		glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&uModel);
 		glUniform1i(3, it->animation);
 		glUniform1i(4, it->frame);
@@ -398,6 +499,33 @@ void Map::AddEnemies(GLuint number)
 	}
 }
 
+void Map::Draw()
+{
+#if TOP_VIEW_MODE==1
+	glm::mat4 uView = glm::lookAt(Player::INSTANCE->position, glm::vec3(Player::INSTANCE->position.x + Player::INSTANCE->look.x, 2, Player::INSTANCE->position.z + Player::INSTANCE->look.z), glm::vec3(0, 1, 0));
+#else
+	glm::mat4 uView = glm::lookAt(Player::INSTANCE->position, Player::INSTANCE->position + Player::INSTANCE->look, glm::vec3(0, 1, 0));
+#endif
+	
+	glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&uView);
+	glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&Mat4::PROJECTION);
+	
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	
+	for (int z = Player::INSTANCE->position.z - origin.y + 0.5f - PLAYER_VISIBLE_DISTANCE, ez = z + (PLAYER_VISIBLE_DISTANCE << 1); z <= ez; ++z)
+	{
+		if (z < 0 || z >= size.y) continue;
+		
+		for (int x = Player::INSTANCE->position.x - origin.x + 0.5f - PLAYER_VISIBLE_DISTANCE, ex = x + (PLAYER_VISIBLE_DISTANCE << 1); x <= ex; ++x)
+		{
+			if (x < 0 || x >= size.x) continue;
+			
+			Block *b = blocks[z * size.x + x];
+			if (b != NULL) b->Draw();
+		}
+	}
+}
+
 Map *Map::Generate(GLuint size)
 {
 	std::vector<Point> points;
@@ -442,31 +570,29 @@ Map *Map::Generate(GLuint size)
 		GLuint i = (it->y - t) * w + (it->x - l);
 		
 		// E
-		if (c == 0b1111) blocks[i] = new Block(Model::E, glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
+		if (c == 0b1111) blocks[i] = new Block(Model::E, glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)));
 		// I
-		else if (c == 0b1110) blocks[i] = new Block(Model::I, glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
-		else if (c == 0b1101) blocks[i] = new Block(Model::I, glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0)));
-		else if (c == 0b1011) blocks[i] = new Block(Model::I, glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0)));
-		else if (c == 0b0111) blocks[i] = new Block(Model::I, glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
+		else if (c == 0b1110) blocks[i] = new Block(Model::I, glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)));
+		else if (c == 0b1101) blocks[i] = new Block(Model::I, glm::rotate<float>(glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0)));
+		else if (c == 0b1011) blocks[i] = new Block(Model::I, glm::rotate<float>(glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0)));
+		else if (c == 0b0111) blocks[i] = new Block(Model::I, glm::rotate<float>(glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
 		// H
-		else if (c == 0b1010) blocks[i] = new Block(Model::H, glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
-		else if (c == 0b0101) blocks[i] = new Block(Model::H, glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
+		else if (c == 0b1010) blocks[i] = new Block(Model::H, glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)));
+		else if (c == 0b0101) blocks[i] = new Block(Model::H, glm::rotate<float>(glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
 		// L
-		else if (c == 0b1100) blocks[i] = new Block(Model::L, glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
-		else if (c == 0b1001) blocks[i] = new Block(Model::L, glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0)));
-		else if (c == 0b0011) blocks[i] = new Block(Model::L, glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0)));
-		else if (c == 0b0110) blocks[i] = new Block(Model::L, glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
+		else if (c == 0b1100) blocks[i] = new Block(Model::L, glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)));
+		else if (c == 0b1001) blocks[i] = new Block(Model::L, glm::rotate<float>(glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0)));
+		else if (c == 0b0011) blocks[i] = new Block(Model::L, glm::rotate<float>(glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0)));
+		else if (c == 0b0110) blocks[i] = new Block(Model::L, glm::rotate<float>(glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
 		// U
-		else if (c == 0b1000) blocks[i] = new Block(Model::U, glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)));
-		else if (c == 0b0001) blocks[i] = new Block(Model::U, glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0)));
-		else if (c == 0b0010) blocks[i] = new Block(Model::U, glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0)));
-		else if (c == 0b0100) blocks[i] = new Block(Model::U, glm::rotate<float>(glm::translate(glm::mat4(1), glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
+		else if (c == 0b1000) blocks[i] = new Block(Model::U, glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)));
+		else if (c == 0b0001) blocks[i] = new Block(Model::U, glm::rotate<float>(glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)), M_PI / -2, glm::vec3(0, 1, 0)));
+		else if (c == 0b0010) blocks[i] = new Block(Model::U, glm::rotate<float>(glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)), -M_PI, glm::vec3(0, 1, 0)));
+		else if (c == 0b0100) blocks[i] = new Block(Model::U, glm::rotate<float>(glm::translate(Mat4::IDENTITY, glm::vec3(it->x, 0, it->y)), M_PI / 2, glm::vec3(0, 1, 0)));
 	}
 	
 	return new Map(blocks, { w, h }, { l, t });
 }
-
-const glm::mat4 App::PROJECTION = glm::perspective<float>(M_PI / 180.0f * 70.0f, WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.01f, 100.0f);
 
 SDL_Window *App::window = NULL;
 SDL_GLContext App::videoContext = NULL;
@@ -490,87 +616,14 @@ int App::Start()
 		}
 		
 		// INPUT CHECKING
-		if (Input::KEYBOARD[SDL_SCANCODE_W] || Input::KEYBOARD[SDL_SCANCODE_UP]) Map::INSTANCE->Move(Camera::INSTANCE->position, Camera::INSTANCE->look * CAMERA_SPEED);
-		else if (Input::KEYBOARD[SDL_SCANCODE_S] || Input::KEYBOARD[SDL_SCANCODE_DOWN]) Map::INSTANCE->Move(Camera::INSTANCE->position, Camera::INSTANCE->look * -CAMERA_SPEED);
-		
-		if (Input::KEYBOARD[SDL_SCANCODE_A]) Map::INSTANCE->Move(Camera::INSTANCE->position, glm::vec3(Camera::INSTANCE->look.z * CAMERA_SPEED, 0, Camera::INSTANCE->look.x * -CAMERA_SPEED));
-		else if (Input::KEYBOARD[SDL_SCANCODE_D]) Map::INSTANCE->Move(Camera::INSTANCE->position, glm::vec3(Camera::INSTANCE->look.z * -CAMERA_SPEED, 0, Camera::INSTANCE->look.x * CAMERA_SPEED));
-		
-		if (Input::KEYBOARD[SDL_SCANCODE_LEFT])
-		{
-			Camera::INSTANCE->angle -= CAMERA_ANGLE_SPEED;
-			Camera::INSTANCE->look.x = glm::cos(Camera::INSTANCE->angle);
-			Camera::INSTANCE->look.z = glm::sin(Camera::INSTANCE->angle);
-		}
-		else if (Input::KEYBOARD[SDL_SCANCODE_RIGHT])
-		{
-			Camera::INSTANCE->angle += CAMERA_ANGLE_SPEED;
-			Camera::INSTANCE->look.x = glm::cos(Camera::INSTANCE->angle);
-			Camera::INSTANCE->look.z = glm::sin(Camera::INSTANCE->angle);
-		}
-		
-		if (Input::KEYBOARD[SDL_SCANCODE_SPACE])
-		{
-			bool hit = false;
-			
-			for (int z = Camera::INSTANCE->position.z - Map::INSTANCE->origin.y + 0.5f - 1, ez = z + 2; z <= ez; ++z)
-			{
-				if (z < 0 || z >= Map::INSTANCE->size.y) continue;
-				
-				for (int x = Camera::INSTANCE->position.x - Map::INSTANCE->origin.x + 0.5f - 1, ex = x + 2; x <= ex; ++x)
-				{
-					if (x < 0 || x >= Map::INSTANCE->size.x) continue;
-					
-					Block *b = Map::INSTANCE->blocks[z * Map::INSTANCE->size.x + x];
-					if (b == NULL) continue;
-					
-					for (int i = 0; i < b->enemies.size; ++i)
-					{
-						Enemy *enemy = b->enemies.data[i];
-						if (enemy->animation == 2) continue;
-						
-						glm::vec3 relative = enemy->position - Camera::INSTANCE->position;
-						float dp = glm::dot(Camera::INSTANCE->look, relative);
-						
-						if (dp > 0 && glm::length(relative) < HIT_DISTANCE)
-						{
-							enemy->PlayFallAnimation();
-							hit = true;
-						}
-					}
-				}
-			}
-			
-			if (hit) Sound::TEST->Play();
-		}
+		Player::INSTANCE->CheckInput();
 		
 		// RENDER
 		Shader::WORLD->Bind();
 		Texture::GLOBAL->Bind();
 		
-	#if TOP_VIEW_MODE==1
-		glm::mat4 uView = glm::lookAt(Camera::INSTANCE->position, glm::vec3(Camera::INSTANCE->position.x + Camera::INSTANCE->look.x, 2, Camera::INSTANCE->position.z + Camera::INSTANCE->look.z), glm::vec3(0, 1, 0));
-	#else
-		glm::mat4 uView = glm::lookAt(Camera::INSTANCE->position, Camera::INSTANCE->position + Camera::INSTANCE->look, glm::vec3(0, 1, 0));
-	#endif
-		
-		glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&uView);
-		glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&PROJECTION);
-		
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		
-		for (int z = Camera::INSTANCE->position.z - Map::INSTANCE->origin.y + 0.5f - CAMERA_VISIBLE_DISTANCE, ez = z + (CAMERA_VISIBLE_DISTANCE << 1); z <= ez; ++z)
-		{
-			if (z < 0 || z >= Map::INSTANCE->size.y) continue;
-			
-			for (int x = Camera::INSTANCE->position.x - Map::INSTANCE->origin.x + 0.5f - CAMERA_VISIBLE_DISTANCE, ex = x + (CAMERA_VISIBLE_DISTANCE << 1); x <= ex; ++x)
-			{
-				if (x < 0 || x >= Map::INSTANCE->size.x) continue;
-				
-				Block *b = Map::INSTANCE->blocks[z * Map::INSTANCE->size.x + x];
-				if (b != NULL) b->Draw();
-			}
-		}
+		Map::INSTANCE->Draw();
+		Player::INSTANCE->Draw();
 		
 		Texture::GLOBAL->Unbind();
 		Shader::WORLD->Unbind();
@@ -636,9 +689,9 @@ int App::Initialize()
 	memset(Input::KEYBOARD, 0, MAX_KEYS);
 	
 	#if TOP_VIEW_MODE==1
-		Camera::INSTANCE = new Camera(glm::vec3(0, 5, 0), 0);
+		Player::INSTANCE = new Player(glm::vec3(0, 5, 0), 0);
 	#else
-		Camera::INSTANCE = new Camera(glm::vec3(0, 0, 0), 0);
+		Player::INSTANCE = new Player(glm::vec3(0, 0, 0), 0);
 	#endif
 	
 	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -655,7 +708,7 @@ int App::Initialize()
 
 int App::Shutdown(int exit)
 {
-	Pointer::Delete(Camera::INSTANCE);
+	Pointer::Delete(Player::INSTANCE);
 	Pointer::Delete(Input::KEYBOARD);
 	Pointer::Delete(Map::INSTANCE);
 	
