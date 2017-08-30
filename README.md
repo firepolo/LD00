@@ -23,6 +23,7 @@ Little 3D project for familiarization with new OpenGL, OpenAL and map generation
 I use a very simple algorithm for create the random map.
 
 On grid, I move a point to a random direction
+
 ![alt tag](https://raw.githubusercontent.com/firepolo/LD00/master/resources/doc/move.png)
 
 Above, when the point move back on this own way (yellow point in exemple), the point move to random direction.
