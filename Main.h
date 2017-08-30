@@ -28,6 +28,7 @@
 #define PLAYER_ANGLE_SPEED 0.05f
 #define PLAYER_VISIBLE_DISTANCE 3
 #define PLAYER_ATTACK_TICKS 16
+#define PLAYER_LIFES 100
 
 #define HITBOX_SIZE 0.05f
 #define HIT_DISTANCE 0.3f
@@ -214,6 +215,7 @@ struct Player
 	
 	GLuint frame;
 	GLuint attackTicks;
+	GLuint life;
 	
 	Player(glm::vec3 _position, float _angle);
 	

@@ -736,7 +736,6 @@ int App::Start()
 		glDrawArrays(GL_TRIANGLES, 0, Model::POST->count);
 		Model::POST->Unbind();
 		Shader::POST->Unbind();
-		Texture::GLOBAL->Unbind();
 		
 		// SWAP BUFFERS
 		SDL_GL_SwapWindow(window);
@@ -814,8 +813,8 @@ int App::Initialize()
 	FrameBuffer::POST = FrameBuffer::Create(BUFFER_WIDTH, BUFFER_HEIGHT);
 	if (!FrameBuffer::POST) return Shutdown(50, "Failed to creating framebuffer !");
 	
-	Map::INSTANCE = Map::Generate(64);
-	Map::INSTANCE->AddEnemies(32);
+	Map::INSTANCE = Map::Generate(256);
+	Map::INSTANCE->AddEnemies(256);
 	
 	Input::KEYBOARD = new bool[MAX_KEYS];
 	memset(Input::KEYBOARD, 0, MAX_KEYS);
