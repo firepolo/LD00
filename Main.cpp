@@ -172,9 +172,12 @@ Texture::~Texture() { glDeleteTextures(1, &id); }
 inline void Texture::Bind() { glBindTexture(GL_TEXTURE_2D, id); }
 inline void Texture::Unbind() { glBindTexture(GL_TEXTURE_2D, 0); }
 
-Sound *Sound::TEST = NULL;
+SoundBuffer *SoundBuffer::MUSIC = NULL;
+SoundBuffer *SoundBuffer::HIT = NULL;
+SoundBuffer *SoundBuffer::CROWBAR = NULL;
+SoundBuffer *SoundBuffer::ENEMY = NULL;
 
-Sound *Sound::Load(const std::string &filename)
+SoundBuffer *SoundBuffer::Load(const std::string &filename)
 {
 	char *data = File::ReadAll(filename.c_str());
 	if (*(short *)(data + 20) != 1 ||	// Audio format PCM
@@ -183,26 +186,34 @@ Sound *Sound::Load(const std::string &filename)
 		*(short *)(data + 34) != 16)	// Bits per sample 16
 		return NULL;
 	
-	GLuint buf;
-	alGenBuffers(1, &buf);
-	alBufferData(buf, AL_FORMAT_MONO16, data + 44, *(GLuint *)(data + 40), 44100);
+	GLuint id;
+	alGenBuffers(1, &id);
+	alBufferData(id, AL_FORMAT_MONO16, data + 44, *(GLuint *)(data + 40), 44100);
 	delete[] data;
 	
-	GLuint src;
-	alGenSources(1, &src);
-	alSourcei(src, AL_BUFFER, buf);
-	
-	return new Sound(buf, src);
+	return new SoundBuffer(id);
 }
 
-Sound::Sound(GLuint _buf, GLuint _src) : buf(_buf), src(_src) {}
-Sound::~Sound() { alDeleteSources(1, &src); alDeleteBuffers(1, &buf); }
+SoundBuffer::SoundBuffer(GLuint _id) : id(_id) {}
+SoundBuffer::~SoundBuffer() { alDeleteBuffers(1, &id); }
 
-inline int Sound::GetState() { int s; alGetSourcei(src, AL_SOURCE_STATE, &s); return s; }
-inline void Sound::SetLooping(bool looping) { alSourcei(src, AL_LOOPING, looping); }
-inline void Sound::Play() { if (GetState() != AL_PLAYING) alSourcePlay(src); }
-inline void Sound::Pause() { if (GetState() == AL_PLAYING) alSourcePause(src); }
-inline void Sound::Stop() { if (GetState() != AL_STOPPED) alSourceStop(src); }
+Sound *Sound::MUSIC = NULL;
+Sound *Sound::HIT = NULL;
+Sound *Sound::CROWBAR = NULL;
+
+Sound::Sound(SoundBuffer *buf)
+{
+	alGenSources(1, &id);
+	alSourcei(id, AL_BUFFER, buf->id);
+}
+Sound::~Sound() { Stop(); alDeleteSources(1, &id); }
+
+inline int Sound::GetState() { int s; alGetSourcei(id, AL_SOURCE_STATE, &s); return s; }
+inline void Sound::SetLooping(bool looping) { alSourcei(id, AL_LOOPING, looping); }
+inline void Sound::Play() { if (GetState() != AL_PLAYING) alSourcePlay(id); }
+inline void Sound::Pause() { if (GetState() == AL_PLAYING) alSourcePause(id); }
+inline void Sound::Stop() { if (GetState() != AL_STOPPED) alSourceStop(id); }
+inline void Sound::SetVolume(float volume) { alSourcef(id, AL_GAIN, volume); }
 
 FrameBuffer *FrameBuffer::POST = NULL;
 
@@ -315,6 +326,8 @@ void Player::CheckInput()
 	
 	if (Input::KEYBOARD[SDL_SCANCODE_SPACE])
 	{
+		Sound::CROWBAR->Play();
+		
 		attackTicks = PLAYER_ATTACK_TICKS;
 		frame = 2;
 		
@@ -348,7 +361,7 @@ void Player::CheckInput()
 			}
 		}
 		
-		if (hit) Sound::TEST->Play();
+		if (hit) Sound::HIT->Play();
 	}
 	else if (!Input::KEYBOARD[SDL_SCANCODE_SPACE]) frame = 1;
 }
@@ -373,6 +386,13 @@ Enemy::Enemy(glm::vec3 _position) : position(_position)
 	animation = 0;
 	frame = 0;
 	SetDirection();
+	speakTick = Random::GetNumber<GLushort>(ENEMY_SPEAK_MIN_TICKS, ENEMY_SPEAK_MAX_TICKS);
+	source = new Sound(SoundBuffer::ENEMY);
+}
+
+Enemy::~Enemy()
+{
+	Pointer::Delete(source);
 }
 
 void Enemy::SetDirection()
@@ -407,6 +427,11 @@ void Enemy::Update()
 		return;
 	}
 	
+	if (--speakTick == 0)
+	{
+		speakTick = Random::GetNumber<GLushort>(ENEMY_SPEAK_MIN_TICKS, ENEMY_SPEAK_MAX_TICKS);
+		source->Play();
+	}
 	if (--decisionTick == 0) SetDirection();
 	if (--animationTick == 0)
 	{
@@ -472,8 +497,12 @@ void Block::Draw()
 		Enemy *it = enemies.data[i];
 		it->Update();
 		
+		glm::vec3 relative = Player::INSTANCE->position - it->position;
+		alSourcefv(it->source->id, AL_POSITION, (float *)&relative);
+		alSourcefv(it->source->id, AL_DIRECTION, (float *)&relative);
+		
 		Model::ENEMY->Bind();
-		glm::mat4 uModel = glm::rotate(glm::translate(Mat4::IDENTITY, it->position), (float)atan2(Player::INSTANCE->position.x - it->position.x, Player::INSTANCE->position.z - it->position.z), glm::vec3(0, 1, 0));
+		glm::mat4 uModel = glm::rotate(glm::translate(Mat4::IDENTITY, it->position), (float)atan2(relative.x, relative.z), glm::vec3(0, 1, 0));
 		glUniformMatrix4fv(0, 1, GL_FALSE, (float *)&uModel);
 		glUniform1i(3, it->animation);
 		glUniform1i(4, it->frame);
@@ -721,10 +750,12 @@ int App::Initialize()
 {
 	if (SDL_Init(SDL_INIT_VIDEO)) return Shutdown(1, "Failed to SDL initialization !");
 	
+	window = SDL_CreateWindow("3D game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+	if (!window) return Shutdown(2, "Failed to create window !");
+	
 	WindowSize.x = WINDOW_WIDTH;
 	WindowSize.y = WINDOW_HEIGHT;
-	window = SDL_CreateWindow("3D game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WindowSize.x, WindowSize.y, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-	if (!window) return Shutdown(2, "Failed to create window !");
+	SDL_ShowCursor(SDL_DISABLE);
 
 	SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
@@ -747,13 +778,23 @@ int App::Initialize()
 	Shader::WORLD = Shader::Load(0b101, "resources\\shaders\\world");
 	if (!Shader::WORLD) return Shutdown(10, "Failed to loading WORLD shader !");
 	Shader::POST = Shader::Load(0b101, "resources\\shaders\\post");
-	if (!Shader::POST) return Shutdown(12, "Failed to loading POST shader !");
+	if (!Shader::POST) return Shutdown(11, "Failed to loading POST shader !");
 
 	Texture::GLOBAL = Texture::Load("resources\\textures\\global.bmp");
 	if (!Texture::GLOBAL) return Shutdown(20, "Failed to loading GLOBAL texture !");
 	
-	Sound::TEST = Sound::Load("resources\\sounds\\shoot.wav");
-	if (!Sound::TEST) return Shutdown(30, "Failed to loading TEST sound !");
+	SoundBuffer::MUSIC = SoundBuffer::Load("resources\\sounds\\music.wav");
+	if (!SoundBuffer::MUSIC) return Shutdown(30, "Failed to loading MUSIC sound !");
+	SoundBuffer::HIT = SoundBuffer::Load("resources\\sounds\\hit.wav");
+	if (!SoundBuffer::HIT) return Shutdown(31, "Failed to loading HIT sound !");
+	SoundBuffer::CROWBAR = SoundBuffer::Load("resources\\sounds\\crowbar.wav");
+	if (!SoundBuffer::CROWBAR) return Shutdown(32, "Failed to loading CROWBAR sound !");
+	SoundBuffer::ENEMY = SoundBuffer::Load("resources\\sounds\\enemy.wav");
+	if (!SoundBuffer::ENEMY) return Shutdown(33, "Failed to loading ENEMY sound !");
+	
+	Sound::MUSIC = new Sound(SoundBuffer::MUSIC);
+	Sound::HIT = new Sound(SoundBuffer::HIT);
+	Sound::CROWBAR = new Sound(SoundBuffer::CROWBAR);
 	
 	Model::E = Model::Load("resources\\models\\E.mol");
 	if (!Model::E) return Shutdown(40, "Failed to loading E model !");
@@ -796,6 +837,12 @@ int App::Initialize()
 	glUniform1i(3, 1);
 	Shader::POST->Unbind();
 	
+	Sound::MUSIC->SetLooping(true);
+	Sound::MUSIC->SetVolume(0.3f);
+	Sound::MUSIC->Play();
+	
+	Sound::CROWBAR->SetVolume(0.8f);
+	
 	return 0;
 }
 
@@ -820,7 +867,15 @@ int App::Shutdown(int exit, const char *msg)
 	Pointer::Delete(Model::I);
 	Pointer::Delete(Model::E);
 	
-	Pointer::Delete(Sound::TEST);
+	Pointer::Delete(Sound::CROWBAR);
+	Pointer::Delete(Sound::HIT);
+	Pointer::Delete(Sound::MUSIC);
+	
+	Pointer::Delete(SoundBuffer::ENEMY);
+	Pointer::Delete(SoundBuffer::CROWBAR);
+	Pointer::Delete(SoundBuffer::HIT);
+	Pointer::Delete(SoundBuffer::MUSIC);
+	
 	Pointer::Delete(Texture::GLOBAL);
 	
 	Pointer::Delete(Shader::POST);

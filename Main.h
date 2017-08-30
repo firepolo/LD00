@@ -34,6 +34,8 @@
 
 #define ENEMY_SPEED 0.02f
 #define ENEMY_DECISIONS_TICKS 60
+#define ENEMY_SPEAK_MIN_TICKS 240
+#define ENEMY_SPEAK_MAX_TICKS 360
 #define ENEMY_ANIMATION_TICKS 16
 #define ENEMY_ANIMATION_WALK_FRAMES 2
 #define ENEMY_ANIMATION_FALL_FRAMES 3
@@ -131,23 +133,41 @@ private:
 	Texture(GLuint _id);
 };
 
-class Sound
+class SoundBuffer
 {
 public:
-	static Sound *TEST;
-	static Sound *Load(const std::string &filename);
+	static SoundBuffer *MUSIC;
+	static SoundBuffer *HIT;
+	static SoundBuffer *CROWBAR;
+	static SoundBuffer *ENEMY;
 	
-	GLuint buf, src;
+	static SoundBuffer *Load(const std::string &filename);
+	
+	GLuint id;
+	~SoundBuffer();
+	
+private:
+	SoundBuffer(GLuint _id);
+};
+
+struct Sound
+{
+	static Sound *MUSIC;
+	static Sound *HIT;
+	static Sound *CROWBAR;
+	
+	GLuint id;
+	
+	Sound(SoundBuffer *buf);
 	~Sound();
 	
+	inline void Attach(SoundBuffer *buf);
 	inline int GetState();
 	inline void SetLooping(bool looping);
 	inline void Play();
 	inline void Pause();
 	inline void Stop();
-
-private:
-	Sound(GLuint _buf, GLuint _src);
+	inline void SetVolume(float volume);
 };
 
 class FrameBuffer
@@ -205,10 +225,12 @@ struct Enemy
 {
 	glm::vec3 position;
 	glm::vec3 direction;
-	GLuint decisionTick, maxDecisionTick;
+	GLushort decisionTick, speakTick;
 	GLuint animation, frame, animationTick;
+	Sound *source;
 	
 	Enemy(glm::vec3 _position);
+	~Enemy();
 	
 	void SetDirection();
 	void PlayFallAnimation();
