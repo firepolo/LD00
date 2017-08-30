@@ -79,7 +79,15 @@ GLuint Shader::Compile(GLuint id, GLenum type, const std::string &filename)
 	glCompileShader(shader);
 	GLint compiled;
 	glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
-	if (compiled == GL_FALSE) return 0;
+	if (compiled == GL_FALSE)
+	{
+		char msg[256];
+		int size = 0;
+		glGetShaderInfoLog(shader, 256, &size, msg);
+		msg[size] = '\0';
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", msg, NULL);
+		return 0;
+	}
 	glAttachShader(id, shader);
 	return 1;
 }
@@ -757,8 +765,8 @@ int App::Initialize()
 	SDL_ShowCursor(SDL_DISABLE);
 
 	SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 5);
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 5);
