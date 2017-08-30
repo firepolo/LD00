@@ -14,8 +14,8 @@
 
 #define TOP_VIEW_MODE 0
 
-#define WINDOW_WIDTH 320
-#define WINDOW_HEIGHT 240
+#define WINDOW_WIDTH 640
+#define WINDOW_HEIGHT 480
 
 #define BUFFER_WIDTH 320
 #define BUFFER_HEIGHT 240
@@ -71,6 +71,7 @@ class Shader
 {
 public:
 	static Shader *WORLD;
+	static Shader *POST;
 	static Shader *Load(GLuint mask, const std::string &filename);
 	
 	GLuint id;
@@ -95,7 +96,13 @@ public:
 		float _unused;
 	};
 
-	static Model *E, *I, *H, *L, *U, *ENEMY;
+	static Model *E;
+	static Model *I;
+	static Model *H;
+	static Model *L;
+	static Model *U;
+	static Model *ENEMY;
+	static Model *POST;
 	static Model *Load(const std::string &filename);
 
 	GLuint vbo, vao, count;
@@ -141,6 +148,27 @@ public:
 
 private:
 	Sound(GLuint _buf, GLuint _src);
+};
+
+class FrameBuffer
+{
+public:
+	static FrameBuffer *POST;
+	static FrameBuffer *Create(GLuint width, GLuint height);
+	
+	GLuint fbo;
+	GLuint color;
+	GLuint depth;
+	
+	~FrameBuffer();
+	
+	inline void Bind();
+	inline void Unbind();
+	inline void BindColor();
+	inline void BindDepth();
+	
+private:
+	FrameBuffer(GLuint _fbo, GLuint _tex, GLuint _rbo);
 };
 
 struct Input
@@ -240,6 +268,8 @@ struct Map
 class App
 {
 public:
+	static Point WindowSize;
+
 	static int Start();
 	static int Initialize();
 
@@ -248,5 +278,5 @@ private:
 	static SDL_GLContext videoContext;
 	static ALCcontext *audioContext;
 
-	static int Shutdown(int exit);
+	static int Shutdown(int exit, const char *msg);
 };

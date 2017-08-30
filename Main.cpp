@@ -41,6 +41,7 @@ const glm::mat4 Mat4::IDENTITY = glm::mat4(1);
 const glm::mat4 Mat4::HAND = glm::scale(Mat4::IDENTITY, glm::vec3(2, 2, 0));
 
 Shader *Shader::WORLD = NULL;
+Shader *Shader::POST = NULL;
 
 Shader *Shader::Load(GLuint mask, const std::string &filename)
 {
@@ -83,7 +84,13 @@ GLuint Shader::Compile(GLuint id, GLenum type, const std::string &filename)
 	return 1;
 }
 
-Model *Model::E = NULL, *Model::I = NULL, *Model::H = NULL, *Model::L = NULL, *Model::U = NULL, *Model::ENEMY = NULL;
+Model *Model::E = NULL;
+Model *Model::I = NULL;
+Model *Model::H = NULL;
+Model *Model::L = NULL;
+Model *Model::U = NULL;
+Model *Model::ENEMY = NULL;
+Model *Model::POST = NULL;
 
 Model *Model::Load(const std::string &filename)
 {
@@ -196,6 +203,54 @@ inline void Sound::SetLooping(bool looping) { alSourcei(src, AL_LOOPING, looping
 inline void Sound::Play() { if (GetState() != AL_PLAYING) alSourcePlay(src); }
 inline void Sound::Pause() { if (GetState() == AL_PLAYING) alSourcePause(src); }
 inline void Sound::Stop() { if (GetState() != AL_STOPPED) alSourceStop(src); }
+
+FrameBuffer *FrameBuffer::POST = NULL;
+
+FrameBuffer *FrameBuffer::Create(GLuint width, GLuint height)
+{
+	GLuint fbo, color, depth;
+	
+	glGenTextures(1, &color);
+	glBindTexture(GL_TEXTURE_2D, color);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, NULL);
+	
+	glGenTextures(1, &depth);
+	glBindTexture(GL_TEXTURE_2D, depth);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	
+	glGenFramebuffers(1, &fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	
+	return new FrameBuffer(fbo, color, depth);
+}
+
+FrameBuffer::FrameBuffer(GLuint _fbo, GLuint _color, GLuint _depth) : fbo(_fbo), color(_color), depth(_depth) {}
+FrameBuffer::~FrameBuffer()
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	
+	glDeleteFramebuffers(1, &fbo);
+	glDeleteTextures(1, &depth);
+	glDeleteTextures(1, &color);
+}
+
+inline void FrameBuffer::Bind() { glBindFramebuffer(GL_FRAMEBUFFER, fbo); }
+inline void FrameBuffer::Unbind() { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
+inline void FrameBuffer::BindColor() { glBindTexture(GL_TEXTURE_2D, color); }
+inline void FrameBuffer::BindDepth() { glBindTexture(GL_TEXTURE_2D, depth); }
 
 bool *Input::KEYBOARD = 0;
 
@@ -510,8 +565,6 @@ void Map::Draw()
 	glUniformMatrix4fv(1, 1, GL_FALSE, (float *)&uView);
 	glUniformMatrix4fv(2, 1, GL_FALSE, (float *)&Mat4::PROJECTION);
 	
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	
 	for (int z = Player::INSTANCE->position.z - origin.y + 0.5f - PLAYER_VISIBLE_DISTANCE, ez = z + (PLAYER_VISIBLE_DISTANCE << 1); z <= ez; ++z)
 	{
 		if (z < 0 || z >= size.y) continue;
@@ -594,6 +647,7 @@ Map *Map::Generate(GLuint size)
 	return new Map(blocks, { w, h }, { l, t });
 }
 
+Point App::WindowSize;
 SDL_Window *App::window = NULL;
 SDL_GLContext App::videoContext = NULL;
 ALCcontext *App::audioContext = NULL;
@@ -606,7 +660,14 @@ int App::Start()
 	{
 		while (SDL_PollEvent(&event))
 		{
-			if (event.type == SDL_QUIT) return Shutdown(0);
+			if (event.type == SDL_QUIT) return Shutdown(0, NULL);
+			
+			if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
+			{
+				WindowSize.x = event.window.data1;
+				WindowSize.y = event.window.data2;
+				continue;
+			}
 			
 			if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP)
 			{
@@ -616,31 +677,54 @@ int App::Start()
 		}
 		
 		// INPUT CHECKING
+		if (Input::KEYBOARD[SDL_SCANCODE_ESCAPE]) return Shutdown(0, NULL);
 		Player::INSTANCE->CheckInput();
 		
 		// RENDER
+		FrameBuffer::POST->Bind();
+		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_CULL_FACE);
+		glViewport(0, 0, BUFFER_WIDTH, BUFFER_HEIGHT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		Shader::WORLD->Bind();
+		glActiveTexture(GL_TEXTURE0);
 		Texture::GLOBAL->Bind();
-		
 		Map::INSTANCE->Draw();
 		Player::INSTANCE->Draw();
+		FrameBuffer::POST->Unbind();
 		
+		// POST PROCESS
+		glDisable(GL_DEPTH_TEST);
+		glDisable(GL_CULL_FACE);
+		glViewport(0, 0, WindowSize.x, WindowSize.y);
+		glClear(GL_COLOR_BUFFER_BIT);
+		Shader::POST->Bind();
+		glActiveTexture(GL_TEXTURE0);
+		FrameBuffer::POST->BindColor();
+		glActiveTexture(GL_TEXTURE1);
+		FrameBuffer::POST->BindDepth();
+		Model::POST->Bind();
+		glDrawArrays(GL_TRIANGLES, 0, Model::POST->count);
+		Model::POST->Unbind();
+		Shader::POST->Unbind();
 		Texture::GLOBAL->Unbind();
-		Shader::WORLD->Unbind();
-
+		
+		// SWAP BUFFERS
 		SDL_GL_SwapWindow(window);
 		SDL_Delay(FPS);
 	}
 
-	return Shutdown(0);
+	return Shutdown(0, NULL);
 }
 
 int App::Initialize()
 {
-	if (SDL_Init(SDL_INIT_VIDEO)) return Shutdown(1);
-
-	window = SDL_CreateWindow("3D game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL);
-	if (!window) return Shutdown(2);
+	if (SDL_Init(SDL_INIT_VIDEO)) return Shutdown(1, "Failed to SDL initialization !");
+	
+	WindowSize.x = WINDOW_WIDTH;
+	WindowSize.y = WINDOW_HEIGHT;
+	window = SDL_CreateWindow("3D game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WindowSize.x, WindowSize.y, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+	if (!window) return Shutdown(2, "Failed to create window !");
 
 	SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
@@ -654,33 +738,40 @@ int App::Initialize()
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
 	videoContext = SDL_GL_CreateContext(window);
-	if (!videoContext || glewInit() != GLEW_OK) return Shutdown(3);
+	if (!videoContext || glewInit() != GLEW_OK) return Shutdown(3, "Failed to GLEW initialization !");
 	
 	audioContext = alcCreateContext(alcOpenDevice(NULL), NULL);
-	if (!audioContext) return Shutdown(5);
+	if (!audioContext) return Shutdown(5, "Failed to creating context openAL !");
 	alcMakeContextCurrent(audioContext);
 
 	Shader::WORLD = Shader::Load(0b101, "resources\\shaders\\world");
-	if (!Shader::WORLD) return Shutdown(10);
+	if (!Shader::WORLD) return Shutdown(10, "Failed to loading WORLD shader !");
+	Shader::POST = Shader::Load(0b101, "resources\\shaders\\post");
+	if (!Shader::POST) return Shutdown(12, "Failed to loading POST shader !");
 
 	Texture::GLOBAL = Texture::Load("resources\\textures\\global.bmp");
-	if (!Texture::GLOBAL) return Shutdown(11);
+	if (!Texture::GLOBAL) return Shutdown(20, "Failed to loading GLOBAL texture !");
 	
 	Sound::TEST = Sound::Load("resources\\sounds\\shoot.wav");
-	if (!Sound::TEST) return Shutdown(18);
+	if (!Sound::TEST) return Shutdown(30, "Failed to loading TEST sound !");
 	
 	Model::E = Model::Load("resources\\models\\E.mol");
-	if (!Model::E) return Shutdown(12);
+	if (!Model::E) return Shutdown(40, "Failed to loading E model !");
 	Model::I = Model::Load("resources\\models\\I.mol");
-	if (!Model::I) return Shutdown(13);
+	if (!Model::I) return Shutdown(41, "Failed to loading I model !");
 	Model::H = Model::Load("resources\\models\\H.mol");
-	if (!Model::H) return Shutdown(14);
+	if (!Model::H) return Shutdown(42, "Failed to loading H model !");
 	Model::L = Model::Load("resources\\models\\L.mol");
-	if (!Model::L) return Shutdown(15);
+	if (!Model::L) return Shutdown(43, "Failed to loading L model !");
 	Model::U = Model::Load("resources\\models\\U.mol");
-	if (!Model::U) return Shutdown(16);
+	if (!Model::U) return Shutdown(44, "Failed to loading U model !");
 	Model::ENEMY = Model::Load("resources\\models\\enemy.mol");
-	if (!Model::ENEMY) return Shutdown(17);
+	if (!Model::ENEMY) return Shutdown(45, "Failed to loading ENEMY model !");
+	Model::POST = Model::Load("resources\\models\\post.mol");
+	if (!Model::POST) return Shutdown(46, "Failed to loading POST model !");
+	
+	FrameBuffer::POST = FrameBuffer::Create(BUFFER_WIDTH, BUFFER_HEIGHT);
+	if (!FrameBuffer::POST) return Shutdown(50, "Failed to creating framebuffer !");
 	
 	Map::INSTANCE = Map::Generate(64);
 	Map::INSTANCE->AddEnemies(32);
@@ -694,24 +785,34 @@ int App::Initialize()
 		Player::INSTANCE = new Player(glm::vec3(0, 0, 0), 0);
 	#endif
 	
-	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
-	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_CULL_FACE);
 	glClearColor(0.1, 0.5, 0.8, 1);
 	
 	Shader::WORLD->Bind();
 	glUniform1i(5, 0);
 	Shader::WORLD->Unbind();
 	
+	Shader::POST->Bind();
+	glUniform1i(2, 0);
+	glUniform1i(3, 1);
+	Shader::POST->Unbind();
+	
 	return 0;
 }
 
-int App::Shutdown(int exit)
+int App::Shutdown(int exit, const char *msg)
 {
+	glActiveTexture(GL_TEXTURE0);
+	Texture::GLOBAL->Unbind();
+	glActiveTexture(GL_TEXTURE1);
+	Texture::GLOBAL->Unbind();
+	
 	Pointer::Delete(Player::INSTANCE);
 	Pointer::Delete(Input::KEYBOARD);
 	Pointer::Delete(Map::INSTANCE);
 	
+	Pointer::Delete(FrameBuffer::POST);
+	
+	Pointer::Delete(Model::POST);
 	Pointer::Delete(Model::ENEMY);
 	Pointer::Delete(Model::U);
 	Pointer::Delete(Model::L);
@@ -721,6 +822,8 @@ int App::Shutdown(int exit)
 	
 	Pointer::Delete(Sound::TEST);
 	Pointer::Delete(Texture::GLOBAL);
+	
+	Pointer::Delete(Shader::POST);
 	Pointer::Delete(Shader::WORLD);
 	
 	if (audioContext)
@@ -732,6 +835,9 @@ int App::Shutdown(int exit)
 	}
 	if (videoContext) SDL_GL_DeleteContext(videoContext);
 	if (window) SDL_DestroyWindow(window);
+	
+	if (msg) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", msg, NULL);
+	
 	SDL_Quit();
 
 	return exit;
